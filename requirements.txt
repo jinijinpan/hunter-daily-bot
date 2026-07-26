@@ -1,0 +1,6 @@
+numpy>=1.26,<3
+opencv-python>=4.10,<5
+Pillow>=10,<12
+mss>=9,<11
+PyAutoGUI>=0.9.54,<1
+pywin32>=306

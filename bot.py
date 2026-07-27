@@ -344,8 +344,10 @@ class DesktopGame:
             image = self.normalized_capture()
         gray = self.cv2.cvtColor(image, self.cv2.COLOR_BGR2GRAY)
         scores: dict[str, float] = {}
-        margin_x, margin_y = self.config.get("page_search_margin", [0, 0])
         for page, coordinates in self.config["anchors"].items():
+            margin_x, margin_y = self.config.get("page_search_margins", {}).get(
+                page, self.config.get("page_search_margin", [0, 0])
+            )
             x1, y1, x2, y2 = coordinates
             template = self.templates[page]
             search_x1 = max(0, x1 - margin_x)
@@ -367,6 +369,9 @@ class DesktopGame:
             scores[page] = numeric_score if math.isfinite(numeric_score) else 0.0
 
         for page, regions in self.config.get("page_multi_anchors", {}).items():
+            margin_x, margin_y = self.config.get("page_search_margins", {}).get(
+                page, self.config.get("page_search_margin", [0, 0])
+            )
             templates = getattr(self, "multi_anchor_templates", {}).get(page, [])
             if len(templates) != len(regions):
                 continue
@@ -885,15 +890,22 @@ class DailyBot:
         self.game.wait_for_page("supply", tolerate_unknown=True)
 
         regions = self.config["supply_claim_regions"]
-        stop_scanning = False
+        attempted: set[tuple[int, int, int, int]] = set()
         for pass_index in range(self.config["supply_max_passes"]):
             image = self.game.normalized_capture()
-            active = [region for region in regions if self.game.active_button(region, image)]
+            active = [
+                region
+                for region in regions
+                if tuple(region) not in attempted
+                and self.game.active_button(region, image)
+                and not self.game.green_indicator(region, image)
+            ]
             if not active:
                 logging.info("每日补给页面已无可领取按钮。")
                 break
             logging.info("第 %d 轮发现 %d 个可领取/补领按钮。", pass_index + 1, len(active))
             for region in active:
+                attempted.add(tuple(region))
                 x1, y1, x2, y2 = region
                 self.game.click_reference(
                     ((x1 + x2) // 2, (y1 + y2) // 2), "领取每日补给"
@@ -904,11 +916,7 @@ class DailyBot:
                 if page == "reward":
                     self._dismiss_reward("supply")
                 else:
-                    logging.info("补给按钮未弹出奖励，结束本次补给扫描。")
-                    stop_scanning = True
-                    break
-            if stop_scanning:
-                break
+                    logging.info("补给按钮未弹出奖励，继续检查其余补给按钮。")
         else:
             logging.warning("达到补给领取最大轮数，请根据运行截图确认是否领完。")
 
@@ -937,24 +945,9 @@ class DailyBot:
         search_passes = int(scroll.get("search_passes", 3))
         for attempt in range(search_passes):
             image = self.game.normalized_capture()
-            found = self.game.find_task(task, image)
-            if found is not None:
-                icon_x, icon_y, score = found
-                button_x = self.config["task_button_x"]["left" if icon_x < 550 else "right"]
-                region = [button_x - 65, icon_y - 20, button_x + 65, icon_y + 20]
-                completed = self.game.gold_button(region, image)
-                if not completed:
-                    completed = self.game.task_progress_complete(
-                        task, (icon_x, icon_y), image
-                    )
-                logging.info(
-                    "任务 %s 图标匹配 %.3f，按钮坐标 %s，已完成=%s",
-                    task,
-                    score,
-                    (button_x, icon_y),
-                    completed,
-                )
-                return (button_x, icon_y), completed
+            task_button = self._task_button_from_image(task, image)
+            if task_button is not None:
+                return task_button
             if attempt + 1 < search_passes:
                 self.game.drag_reference(
                     scroll["from"],
@@ -965,6 +958,64 @@ class DailyBot:
                 self.game.wait_for_page("tasks", tolerate_unknown=True)
         logging.info("当前任务列表中未找到任务：%s", task)
         return None
+
+    def _task_button_from_image(
+        self, task: str, image: Any
+    ) -> tuple[tuple[int, int], bool] | None:
+        found = self.game.find_task(task, image)
+        if found is None:
+            return None
+        icon_x, icon_y, score = found
+        button_x = self.config["task_button_x"]["left" if icon_x < 550 else "right"]
+        region = [button_x - 65, icon_y - 20, button_x + 65, icon_y + 20]
+        completed = self.game.gold_button(region, image)
+        if not completed:
+            completed = self.game.task_progress_complete(
+                task, (icon_x, icon_y), image
+            )
+        logging.info(
+            "任务 %s 图标匹配 %.3f，按钮坐标 %s，已完成=%s",
+            task,
+            score,
+            (button_x, icon_y),
+            completed,
+        )
+        return (button_x, icon_y), completed
+
+    def _scan_completed_tasks(self, tasks: Iterable[str]) -> set[str]:
+        task_list = list(tasks)
+        remaining = set(task_list)
+        completed: set[str] = set()
+        scroll = self.config["task_scroll"]
+        self._reset_task_scroll_to_top()
+        search_passes = int(scroll.get("search_passes", 3))
+        for attempt in range(search_passes):
+            image = self.game.normalized_capture()
+            for task in task_list:
+                if task not in remaining:
+                    continue
+                task_button = self._task_button_from_image(task, image)
+                if task_button is None:
+                    continue
+                remaining.remove(task)
+                _point, is_completed = task_button
+                if is_completed:
+                    completed.add(task)
+            if not remaining or attempt + 1 >= search_passes:
+                break
+            self.game.drag_reference(
+                scroll["from"],
+                scroll["to"],
+                scroll["duration_seconds"],
+                "扫描小秘书任务状态",
+            )
+            self.game.wait_for_page("tasks", tolerate_unknown=True)
+        logging.info(
+            "小秘书任务预扫描：已完成 %d/%d 项。",
+            len(completed),
+            len(task_list),
+        )
+        return completed
 
     def _run_character_cycles(self) -> None:
         cycle_count = int(self.config.get("character_cycle_count", 1))
@@ -1049,7 +1100,14 @@ class DailyBot:
         )
 
     def _run_captured_tasks(self) -> None:
-        for task in self._configured_task_adapters():
+        adapters = self._configured_task_adapters()
+        self._open_daily_tasks()
+        completed_tasks = self._scan_completed_tasks(adapters)
+        self._return_home()
+        for task in adapters:
+            if task in completed_tasks:
+                logging.info("任务 %s 已完成，跳过重复查找和执行。", task)
+                continue
             self._open_daily_tasks()
             started = False
             if task == "tower":

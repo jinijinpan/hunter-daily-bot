@@ -190,6 +190,20 @@ class TemplateRecognitionTests(unittest.TestCase):
             scores["abyss_cards"], self.config["page_thresholds"]["abyss_cards"]
         )
 
+    def test_daily_supply_excludes_claimed_slots_from_active_buttons(self):
+        image = self.normalize_capture_fixture(
+            ROOT / "references" / "supply_partial_wide_raw.png"
+        )
+        game = self.configured_game()
+
+        claimable = [
+            game.active_button(region, image)
+            and not game.green_indicator(region, image)
+            for region in self.config["supply_claim_regions"]
+        ]
+
+        self.assertEqual([False, False, True, True], claimable)
+
     def test_page_recognition_tolerates_small_responsive_shift(self):
         image = self.read_gray(
             self.resolve_source(self.config["reference_screenshots"]["main"])

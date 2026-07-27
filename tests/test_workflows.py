@@ -17,6 +17,7 @@ class FakeGame:
         pages=None,
         gold_results=None,
         red_results=None,
+        green_results=None,
         progress_results=None,
         character_indices=None,
         detected_page=None,
@@ -24,6 +25,7 @@ class FakeGame:
         self.pages = list(pages or [])
         self.gold_results = list(gold_results or [])
         self.red_results = list(red_results or [])
+        self.green_results = list(green_results or [])
         self.progress_results = list(progress_results or [])
         self.character_indices = list(character_indices or [])
         self.detected_page = detected_page
@@ -75,6 +77,11 @@ class FakeGame:
     def red_indicator(self, _region, _image=None):
         if self.red_results:
             return self.red_results.pop(0)
+        return False
+
+    def green_indicator(self, _region, _image=None):
+        if self.green_results:
+            return self.green_results.pop(0)
         return False
 
     def task_progress_complete(self, _name, _center, _image=None):
@@ -233,13 +240,20 @@ class CapturedWorkflowTests(unittest.TestCase):
         )
         self.assertEqual([("main", "trial")] * 2, game.waits)
 
-    def test_supply_stops_after_colored_button_returns_no_reward(self):
-        game = FakeGame(["supply"])
+    def test_supply_skips_claimed_slots_and_continues_after_no_reward(self):
+        game = FakeGame(
+            ["supply", "reward"],
+            green_results=[True, True, False, False, True, True],
+        )
         DailyBot(game, self.config)._collect_daily_supply()
         claim_clicks = [
             point for point, label in game.clicks if label == "领取每日补给"
         ]
-        self.assertEqual(1, len(claim_clicks))
+        expected = [
+            ((x1 + x2) // 2, (y1 + y2) // 2)
+            for x1, y1, x2, y2 in self.config["supply_claim_regions"][2:]
+        ]
+        self.assertEqual(expected, claim_clicks)
         self.assertEqual(["supply-finished"], game.diagnostics)
 
     def test_hunter_field_uses_captured_quick_pass_path(self):
@@ -734,20 +748,50 @@ class CapturedWorkflowTests(unittest.TestCase):
             directions,
         )
 
-    def test_completed_task_returns_home_before_scanning_next_adapter(self):
+    def test_completed_tasks_are_prescanned_and_not_opened_individually(self):
         config = copy.deepcopy(self.config)
         config["captured_task_adapters"] = ["tower", "hunter_field"]
         game = FakeGame()
         bot = DailyBot(game, config)
         events = []
         bot._open_daily_tasks = lambda: events.append("open")
+        bot._scan_completed_tasks = lambda _tasks: {"tower", "hunter_field"}
         bot._open_tower_task = lambda: None
         bot._open_hunter_task = lambda: None
         bot._return_home = lambda: events.append("home")
 
         bot._run_captured_tasks()
 
-        self.assertEqual(["open", "home", "open", "home"], events)
+        self.assertEqual(["open", "home"], events)
+
+    def test_task_prescan_collects_completed_rows_across_multiple_screens(self):
+        config = copy.deepcopy(self.config)
+        config["task_scroll"]["reset_passes"] = 0
+        config["task_scroll"]["search_passes"] = 2
+        game = FakeGame(gold_results=[True, False, True])
+        bot = DailyBot(game, config)
+        screen = {"index": 0}
+
+        def find_task(task, _image):
+            visible = [
+                {"tower": (152, 230, 0.99), "hunter_field": (652, 316, 0.99)},
+                {"abyss": (652, 404, 0.99)},
+            ][screen["index"]]
+            return visible.get(task)
+
+        game.find_task = find_task
+        original_drag = game.drag_reference
+
+        def drag_and_advance(start, end, duration, label):
+            original_drag(start, end, duration, label)
+            screen["index"] += 1
+
+        game.drag_reference = drag_and_advance
+
+        completed = bot._scan_completed_tasks(["tower", "hunter_field", "abyss"])
+
+        self.assertEqual({"tower", "abyss"}, completed)
+        self.assertEqual(1, len(game.drags))
 
     def test_incomplete_progress_keeps_task_available(self):
         game = FakeGame(gold_results=[False], progress_results=[False])

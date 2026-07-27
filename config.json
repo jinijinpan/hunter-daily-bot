@@ -4,6 +4,7 @@
   "reference_content_top": 53,
   "content_top_search_range": [35, 90],
   "page_search_margin": [20, 14],
+  "page_search_margins": {"tasks": [70, 14]},
   "page_match_threshold": 0.78,
   "page_multi_anchor_threshold": 0.64,
   "page_multi_anchor_thresholds": {"main": 0.7, "hunter_confirm": 0.75},
@@ -98,6 +99,9 @@
     ]
   },
   "page_runtime_samples": {
+    "tasks": ["references\\tasks_wide_raw.png"],
+    "supply": ["references\\supply_partial_wide_raw.png"],
+    "tower": ["references\\tower_quick_wide_raw.png"],
     "abyss_cards": ["references\\abyss_cards_round2_raw.png"],
     "abyss_exhausted": ["references\\abyss_exhausted_forest_raw.png"]
   },
@@ -108,7 +112,7 @@
     "tasks": [195, 55, 325, 104],
     "stamina_get": [430, 165, 665, 235],
     "stamina_recovery": [430, 165, 665, 235],
-    "tower": [195, 55, 330, 105],
+    "tower": [865, 580, 1045, 655],
     "tower_changed": [405, 335, 675, 425],
     "tower_manual": [790, 570, 1025, 665],
     "tower_battle_confirm": [350, 315, 720, 405],

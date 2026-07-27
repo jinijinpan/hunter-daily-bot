@@ -91,12 +91,10 @@ class InteractionRecorder:
         return filename
 
     def _capture_named(self, filename: str):
-        image = self.game.capture()
+        frame = self.game.capture_frame()
+        image = frame.normalized
         saved = self._save_image(image, filename)
-        normalized = self.game.cv2.resize(
-            image, tuple(self.game.config["reference_size"]), interpolation=self.game.cv2.INTER_AREA
-        )
-        page, scores = self.game.detect_page(normalized)
+        page, scores = self.game.detect_page(image)
         return saved, image, page, scores
 
     def _record_changed_frame(self, force: bool = False, label: str = "change") -> None:
@@ -106,7 +104,8 @@ class InteractionRecorder:
         if not self._foreground():
             return
 
-        image = self.game.capture()
+        frame = self.game.capture_frame()
+        image = frame.normalized
         thumbnail = self.game.cv2.resize(image, (160, 100), interpolation=self.game.cv2.INTER_AREA)
         gray = self.game.cv2.cvtColor(thumbnail, self.game.cv2.COLOR_BGR2GRAY)
         difference = None
@@ -121,10 +120,7 @@ class InteractionRecorder:
         self.frame_index += 1
         filename = f"frame-{self.frame_index:04d}-{label}.png"
         self._save_image(image, filename)
-        normalized = self.game.cv2.resize(
-            image, tuple(self.game.config["reference_size"]), interpolation=self.game.cv2.INTER_AREA
-        )
-        page, scores = self.game.detect_page(normalized)
+        page, scores = self.game.detect_page(image)
         self._write_event(
             {
                 "type": "frame",

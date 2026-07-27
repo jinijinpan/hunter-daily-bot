@@ -50,6 +50,12 @@ python bot.py prepare
 python bot.py inspect
 ```
 
+连续观察 V2 识别结果但不点击。用户可以在这段时间手动操作游戏；状态变化时会保存原图、标准化图、带框标注图、Observation JSON 和校准 JSON：
+
+```powershell
+python bot.py observe --duration 120 --interval 0.5
+```
+
 输出计划，不执行点击：
 
 ```powershell
@@ -69,6 +75,8 @@ python bot.py run --execute --resume
 ```
 
 每次运行的日志和安全停止截图保存在 `runs/<时间>/`。建议首次真实运行时观察整个过程；如果游戏更新了界面，先停止并重新捕获，不要降低识别阈值强行运行。
+
+首次捕获会使用连续 5 帧校准游戏内容顶部；窗口客户区尺寸不变时复用校准结果，尺寸变化后才重新校准。校准不可信时脚本会保存原图并安全停止。
 
 ## 捕获新任务
 
@@ -104,7 +112,13 @@ python compress_recordings.py
 python -m unittest discover -s tests -v
 ```
 
-测试覆盖坐标缩放、页面模板、任务重排、活跃宝箱状态、无尽塔/猎魔计算阶段防误点，以及四个任务状态机的操作顺序。
+单独回放从真实失败运行和录制中挑选的最小识别数据集：
+
+```powershell
+python replay_recognition.py
+```
+
+测试覆盖视口校准缓存、在线/离线标准化一致性、真实截图页面与局部控件识别、多帧一致性、坐标缩放、页面模板、任务重排、活跃宝箱状态、无尽塔/猎魔计算阶段防误点，以及任务状态机的操作顺序。
 
 ## 设计文档
 

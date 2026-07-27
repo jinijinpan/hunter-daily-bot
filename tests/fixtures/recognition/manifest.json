@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "description": "Minimal lossless replay set selected from real failed runs and recordings.",
+  "samples": [
+    {
+      "file": "tasks-completed.webp",
+      "source": "runs/20260727-191749/timeout-tasks.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "tasks",
+      "expected_state": "tasks",
+      "required_controls": ["claim", "go"],
+      "forbidden_controls": []
+    },
+    {
+      "file": "tower-ready.webp",
+      "source": "runs/20260727-203905/timeout-tower、tower_manual.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "tower",
+      "expected_state": "tower_ready",
+      "required_controls": ["start_challenge", "quick_challenge"],
+      "forbidden_controls": []
+    },
+    {
+      "file": "abyss-exhausted.webp",
+      "source": "runs/20260727-074437/timeout-abyss_cards、abyss_exhausted、abyss_finished、reward、stamina_get.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "abyss_exhausted",
+      "expected_state": "abyss_exhausted",
+      "required_controls": ["return_safe"],
+      "forbidden_controls": ["retry"]
+    },
+    {
+      "file": "monster-stage.webp",
+      "source": "runs/20260726-194807/timeout-monster_result.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "monster_invasion",
+      "expected_state": "monster_stage",
+      "required_controls": ["challenge"],
+      "forbidden_controls": ["quick_match"]
+    },
+    {
+      "file": "hunter-disabled.webp",
+      "source": "runs/20260727-221649/timeout-hunter_failure、reward.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "hunter_field",
+      "expected_state": "hunter_field",
+      "required_controls": ["quick_disabled"],
+      "forbidden_controls": ["quick_clear"]
+    },
+    {
+      "file": "loading.webp",
+      "source": "recordings/20260725-210526/frame-0006-after-action-0004.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "unknown",
+      "expected_state": "loading",
+      "required_controls": [],
+      "forbidden_controls": ["claim", "go", "challenge", "quick_challenge", "return_safe"]
+    },
+    {
+      "file": "main.webp",
+      "source": "recordings/20260725-210526/frame-0007-change.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "main",
+      "expected_state": "main",
+      "required_controls": [],
+      "forbidden_controls": []
+    }
+  ]
+}

@@ -12,6 +12,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
+from recognition import (
+    CalibrationError,
+    CapturedFrame,
+    MultiFrameConsensus,
+    RecognitionEngine,
+    ViewportCalibrator,
+    frame_difference,
+    normalize_frame,
+)
+
 
 ROOT = Path(__file__).resolve().parent
 ASSETS_DIR = ROOT / "assets"
@@ -155,6 +165,10 @@ class DesktopGame:
         self.task_templates = self._load_task_templates()
         self.task_progress_templates = self._load_task_progress_templates()
         self.activity_templates = self._load_activity_templates()
+        self.viewport_calibrator = ViewportCalibrator(config, self.cv2, self.np)
+        self.recognition = RecognitionEngine(config, self.cv2, self.np)
+        self.last_frame: CapturedFrame | None = None
+        self.last_observation = None
 
     def _find_window(self) -> int:
         title_fragment = self.config["window_title_contains"]
@@ -205,8 +219,7 @@ class DesktopGame:
             raise SafetyStop("无法激活小游戏窗口，请手动点一下窗口后重试。") from exc
         time.sleep(0.4)
 
-    def capture(self):
-        self.window_rect = self._window_rect()
+    def _grab_window(self):
         monitor = {
             "left": self.window_rect.left,
             "top": self.window_rect.top,
@@ -215,8 +228,37 @@ class DesktopGame:
         }
         with self.mss_module.MSS() as screen:
             shot = self.np.array(screen.grab(monitor))
-        image = self.cv2.cvtColor(shot, self.cv2.COLOR_BGRA2BGR)
-        self.content_top = self._detect_content_top(image)
+        return self.cv2.cvtColor(shot, self.cv2.COLOR_BGRA2BGR)
+
+    def capture_frame(self) -> CapturedFrame:
+        self.window_rect = self._window_rect()
+        client_size = (self.window_rect.width, self.window_rect.height)
+        try:
+            image, calibration, recalibrated = self.viewport_calibrator.ensure(
+                client_size, self._grab_window
+            )
+            normalized = normalize_frame(
+                image,
+                calibration,
+                self.config["reference_size"],
+                self.config.get("reference_content_top", 0),
+                self.cv2,
+                self.np,
+            )
+        except CalibrationError as exc:
+            path = self.run_dir / f"calibration-failed-{int(time.time())}.png"
+            try:
+                raw = image if "image" in locals() else self._grab_window()
+                encoded, buffer = self.cv2.imencode(".png", raw)
+                if encoded:
+                    buffer.tofile(path)
+                    logging.error("视口校准失败，原始截图已保存：%s", path)
+            finally:
+                raise SafetyStop(str(exc)) from exc
+
+        previous = self.last_frame.normalized if self.last_frame is not None else None
+        change = frame_difference(previous, normalized, self.cv2)
+        self.content_top = calibration.content_top
         ref_width, ref_height = self.config["reference_size"]
         self.geometry = ReferenceGeometry(
             ref_width,
@@ -225,7 +267,33 @@ class DesktopGame:
             self.config.get("reference_content_top", 0),
             self.content_top,
         )
-        return image
+        frame = CapturedFrame(
+            raw=image,
+            normalized=normalized,
+            calibration=calibration,
+            viewport=(
+                self.window_rect.left,
+                self.window_rect.top,
+                self.window_rect.right,
+                self.window_rect.bottom,
+            ),
+            timestamp=time.time(),
+            frame_change=change,
+        )
+        self.last_frame = frame
+        logging.debug(
+            "捕获帧：size=%sx%s content_top=%s generation=%s recalibrated=%s frame_change=%.3f",
+            client_size[0],
+            client_size[1],
+            calibration.content_top,
+            calibration.generation,
+            recalibrated,
+            change,
+        )
+        return frame
+
+    def capture(self):
+        return self.capture_frame().raw
 
     def _detect_content_top(self, image) -> int:
         reference_top = self.config.get("reference_content_top", 0)
@@ -242,24 +310,7 @@ class DesktopGame:
         return content_top
 
     def normalized_capture(self):
-        image = self.capture()
-        width, height = self.config["reference_size"]
-        reference_top = self.config.get("reference_content_top", 0)
-        if reference_top <= 0 or self.content_top <= 0:
-            return self.cv2.resize(
-                image, (width, height), interpolation=self.cv2.INTER_AREA
-            )
-        chrome = self.cv2.resize(
-            image[: self.content_top],
-            (width, reference_top),
-            interpolation=self.cv2.INTER_AREA,
-        )
-        content = self.cv2.resize(
-            image[self.content_top :],
-            (width, height - reference_top),
-            interpolation=self.cv2.INTER_AREA,
-        )
-        return self.np.vstack((chrome, content))
+        return self.capture_frame().normalized
 
     def _load_templates(self) -> dict[str, Any]:
         templates: dict[str, Any] = {}
@@ -415,6 +466,34 @@ class DesktopGame:
             )
             logging.debug("页面 %s 联合锚点分数：%s", page, anchor_scores)
         return self._select_page_from_scores(scores), scores
+
+    def observe_frame(self, frame: CapturedFrame | None = None):
+        frame = frame or self.capture_frame()
+        _legacy_page, scores = self.detect_page(frame.normalized)
+        observation = self.recognition.observe(
+            frame.normalized,
+            viewport=frame.viewport,
+            template_scores=scores,
+            frame_change=frame.frame_change,
+            timestamp=frame.timestamp,
+        )
+        self.last_observation = observation
+        logging.info(
+            "Observation：state=%s confidence=%.3f frame_change=%.3f controls=%s titles=%s",
+            observation.state,
+            observation.state_confidence,
+            observation.frame_change,
+            [
+                (control.name, control.rect, round(control.confidence, 3))
+                for control in observation.controls
+            ],
+            {
+                name: round(score, 3)
+                for name, score in observation.title_candidates.items()
+                if score > 0
+            },
+        )
+        return observation
 
     def _page_threshold(self, page: str) -> float:
         return float(
@@ -672,15 +751,45 @@ class DesktopGame:
         )
         return score if math.isfinite(score) else 0.0
 
-    def save_diagnostic(self, name: str) -> Path:
-        path = self.run_dir / f"{name}.png"
-        image = self.capture()
+    def _save_image(self, path: Path, image) -> None:
         encoded, buffer = self.cv2.imencode(".png", image)
         if not encoded:
             raise SafetyStop("无法编码诊断截图。")
         buffer.tofile(path)
-        logging.info("保存截图：%s", path)
-        return path
+
+    def save_diagnostic(self, name: str) -> Path:
+        frame = self.last_frame or self.capture_frame()
+        raw_path = self.run_dir / f"{name}-raw.png"
+        normalized_path = self.run_dir / f"{name}-normalized.png"
+        annotated_path = self.run_dir / f"{name}-annotated.png"
+        observation_path = self.run_dir / f"{name}-observation.json"
+        metadata_path = self.run_dir / f"{name}-diagnostic.json"
+        observation = self.last_observation
+        if observation is None or observation.timestamp != frame.timestamp:
+            observation = self.observe_frame(frame)
+        annotated = self.recognition.annotate(frame.normalized, observation)
+        self._save_image(raw_path, frame.raw)
+        self._save_image(normalized_path, frame.normalized)
+        self._save_image(annotated_path, annotated)
+        observation.write_json(observation_path)
+        metadata = {
+            "timestamp": frame.timestamp,
+            "viewport": frame.viewport,
+            "frame_change": frame.frame_change,
+            "calibration": frame.calibration.to_dict(),
+        }
+        metadata_path.write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        logging.info(
+            "保存诊断：raw=%s normalized=%s annotated=%s observation=%s metadata=%s",
+            raw_path,
+            normalized_path,
+            annotated_path,
+            observation_path,
+            metadata_path,
+        )
+        return raw_path
 
 
 class DailyBot:
@@ -1940,10 +2049,48 @@ def configure_logging(run_dir: Path) -> None:
     )
 
 
+def run_observation_mode(game: DesktopGame, config: dict[str, Any], duration: float, interval: float) -> None:
+    settings = config.get("recognition_v2", {})
+    consensus = MultiFrameConsensus(
+        required_frames=int(settings.get("stable_frames", 2)),
+        max_frame_change=float(settings.get("stable_frame_change", 3.0)),
+    )
+    deadline = time.monotonic() + duration
+    last_state: str | None = None
+    sequence = 0
+    logging.info(
+        "观察模式启动：duration=%.1fs interval=%.2fs；不会执行鼠标点击。",
+        duration,
+        interval,
+    )
+    while time.monotonic() < deadline:
+        started = time.monotonic()
+        observation = game.observe_frame()
+        stable = consensus.update(observation)
+        if stable is not None:
+            logging.info(
+                "多帧确认：state=%s confidence=%.3f",
+                stable.state,
+                stable.state_confidence,
+            )
+        if observation.state != last_state:
+            sequence += 1
+            game.save_diagnostic(
+                f"observe-{sequence:04d}-{observation.state}"
+            )
+            last_state = observation.state
+        remaining = interval - (time.monotonic() - started)
+        if remaining > 0:
+            time.sleep(remaining)
+    logging.info("观察模式结束：已观察 %.1f 秒。", duration)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="时空猎人·觉醒微信小游戏每日任务助手")
     parser.add_argument(
-        "command", choices=("prepare", "inspect", "run"), help="准备模板、检查页面或运行流程"
+        "command",
+        choices=("prepare", "inspect", "observe", "run"),
+        help="准备模板、检查页面、只观察或运行流程",
     )
     parser.add_argument(
         "--execute",
@@ -1958,11 +2105,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config", type=Path, default=ROOT / "config.json", help="配置文件路径"
     )
+    parser.add_argument(
+        "--duration", type=float, default=120.0, help="observe 持续秒数，默认 120"
+    )
+    parser.add_argument(
+        "--interval", type=float, default=0.5, help="observe 采样间隔秒数，默认 0.5"
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    if args.duration <= 0:
+        raise SystemExit("--duration 必须大于 0。")
+    if args.interval < 0.1:
+        raise SystemExit("--interval 不能小于 0.1 秒。")
     config = load_config(args.config)
     if args.command == "prepare":
         prepare_assets(config)
@@ -1984,6 +2141,10 @@ def main() -> int:
             path = game.save_diagnostic(f"inspect-{page}")
             logging.info("识别页面：%s；匹配分数：%s；截图：%s", page, scores, path)
             return 0 if page != "unknown" else 2
+        if args.command == "observe":
+            game.focus(force=True)
+            run_observation_mode(game, config, args.duration, args.interval)
+            return 0
         DailyBot(game, config, resume=args.resume).run()
         logging.info("当前已知流程执行完成。运行记录：%s", run_dir)
         return 0

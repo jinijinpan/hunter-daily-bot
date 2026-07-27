@@ -3,6 +3,140 @@
   "reference_size": [1091, 700],
   "reference_content_top": 53,
   "content_top_search_range": [35, 90],
+  "viewport_calibration": {
+    "frame_count": 5,
+    "max_deviation": 2,
+    "min_edge_strength": 20.0,
+    "min_inliers": 4
+  },
+  "recognition_v2": {
+    "ocr_scale": 2.0,
+    "ocr_match_threshold": 0.52,
+    "stable_frames": 2,
+    "stable_frame_change": 6.0,
+    "title_regions": {
+      "tasks": {"region": [165, 53, 410, 120], "aliases": ["小秘书"], "when_templates": ["tasks"]},
+      "tower": {"region": [165, 53, 410, 120], "aliases": ["无尽塔"], "when_templates": ["tower"]},
+      "monster": {"region": [165, 53, 410, 120], "aliases": ["魔物入侵"], "when_templates": ["monster_invasion"]},
+      "hunter": {"region": [165, 53, 410, 120], "aliases": ["猎魔战场"], "when_templates": ["hunter_field"]},
+      "main_menu": {"region": [250, 53, 430, 145], "aliases": ["秘书希尔"], "when_templates": ["main"]},
+      "loading_hint": {"region": [275, 575, 820, 680], "aliases": ["小秘书提示"]}
+    },
+    "control_regions": [
+      {
+        "region": [90, 170, 1091, 565],
+        "when_templates": ["tasks"],
+        "colors": ["gold"],
+        "min_width": 90,
+        "min_height": 24,
+        "max_height": 70,
+        "min_color_fraction": 0.2,
+        "aliases": {
+          "claim": ["领取"]
+        }
+      },
+      {
+        "region": [90, 170, 1091, 565],
+        "when_templates": ["tasks"],
+        "colors": ["blue"],
+        "min_width": 90,
+        "min_height": 24,
+        "max_height": 70,
+        "min_color_fraction": 0.2,
+        "aliases": {
+          "go": ["前往"]
+        }
+      },
+      {
+        "region": [680, 535, 1091, 700],
+        "when_templates": ["tower"],
+        "colors": ["gold"],
+        "min_width": 100,
+        "min_height": 28,
+        "max_height": 90,
+        "aliases": {
+          "start_challenge": ["开始挑战"],
+          "quick_challenge": ["快速挑战"]
+        }
+      },
+      {
+        "region": [390, 515, 770, 700],
+        "when_templates": ["monster_invasion"],
+        "colors": ["gold"],
+        "min_width": 100,
+        "min_height": 28,
+        "max_height": 90,
+        "aliases": {
+          "challenge": ["挑战"],
+          "quick_match": ["快速匹配"]
+        }
+      },
+      {
+        "region": [875, 65, 1091, 155],
+        "when_templates": ["abyss_exhausted"],
+        "colors": [],
+        "aliases": {},
+        "fixed": [
+          {"name": "return_safe", "region": [875, 65, 1091, 155], "aliases": ["返回安全区"]}
+        ]
+      },
+      {
+        "region": [735, 535, 1091, 685],
+        "when_templates": ["hunter_field"],
+        "colors": [],
+        "aliases": {},
+        "fixed": [
+          {"name": "quick_disabled", "region": [820, 570, 1010, 665], "aliases": ["快速通关"]}
+        ]
+      }
+    ],
+    "numeric_regions": {
+      "stamina": {"region": [155, 53, 260, 105], "pattern": "(\\d+)\\s*/\\s*150", "group": 1, "when_templates": ["abyss_exhausted"]},
+      "loading_progress": {"region": [460, 635, 630, 700], "pattern": "(\\d+)\\s*%", "group": 1}
+    },
+    "state_rules": {
+      "tasks": {
+        "template_any": ["tasks"],
+        "title_any": ["tasks"],
+        "control_any": ["claim", "go"],
+        "min_signals": 2
+      },
+      "tower_ready": {
+        "template_any": ["tower"],
+        "title_any": ["tower"],
+        "control_any": ["start_challenge", "quick_challenge"],
+        "min_signals": 2
+      },
+      "abyss_exhausted": {
+        "template_any": ["abyss_exhausted"],
+        "control_any": ["return_safe"],
+        "numeric_equals": {"stamina": 0},
+        "min_signals": 2
+      },
+      "monster_stage": {
+        "template_any": ["monster_invasion"],
+        "title_any": ["monster"],
+        "control_any": ["challenge"],
+        "min_signals": 2
+      },
+      "hunter_field": {
+        "template_any": ["hunter_field"],
+        "title_any": ["hunter"],
+        "control_any": ["quick_disabled", "quick_clear"],
+        "min_signals": 2
+      },
+      "loading": {
+        "title_any": ["loading_hint"],
+        "numeric_equals": {"loading_progress": 0},
+        "min_signals": 2
+      },
+      "main": {
+        "template_any": ["main"],
+        "title_any": ["main_menu"],
+        "min_signals": 2
+      }
+    }
+  },
   "page_search_margin": [20, 14],
   "page_search_margins": {"tasks": [70, 14]},
   "page_match_threshold": 0.78,

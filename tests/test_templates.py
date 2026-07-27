@@ -159,6 +159,24 @@ class TemplateRecognitionTests(unittest.TestCase):
                     scores[expected], self.config["page_thresholds"][expected]
                 )
 
+    def test_abyss_exhausted_recognizes_safe_button_on_another_stage(self):
+        image = self.normalize_capture_fixture(
+            ROOT / "references" / "abyss_exhausted_forest_raw.png"
+        )
+        game = self.configured_game()
+
+        detected, scores = game.detect_page(image)
+
+        self.assertEqual("abyss_exhausted", detected)
+        self.assertGreaterEqual(
+            scores["abyss_exhausted"],
+            self.config["page_thresholds"]["abyss_exhausted"],
+        )
+        self.assertLess(
+            scores["abyss_finished"],
+            self.config["page_thresholds"]["abyss_finished"],
+        )
+
     def test_abyss_cards_recognizes_later_flip_round_at_runtime_size(self):
         image = self.normalize_capture_fixture(
             ROOT / "references" / "abyss_cards_round2_raw.png"
@@ -350,6 +368,12 @@ class TemplateRecognitionTests(unittest.TestCase):
             },
             "tasks_new.png": {
                 "monster_invasion",
+                "hunter_league",
+                "infinite_mystery",
+            },
+            "tasks_current.png": {
+                "hunter_field",
+                "resource_supply",
                 "hunter_league",
                 "infinite_mystery",
             },

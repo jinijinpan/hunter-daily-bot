@@ -87,7 +87,8 @@
       "references\\tasks_bottom.png",
       "references\\tasks_claimed.png",
       "references\\tasks_completed.png",
-      "references\\tasks_new.png"
+      "references\\tasks_new.png",
+      "references\\tasks_current.png"
     ],
     "hunter_confirm": ["references\\hunter_confirm_current.png"],
     "tower_battle_confirm": ["references\\tower_battle_confirm_current.png"],
@@ -97,7 +98,8 @@
     ]
   },
   "page_runtime_samples": {
-    "abyss_cards": ["references\\abyss_cards_round2_raw.png"]
+    "abyss_cards": ["references\\abyss_cards_round2_raw.png"],
+    "abyss_exhausted": ["references\\abyss_exhausted_forest_raw.png"]
   },
   "anchors": {
     "main": [805, 87, 865, 132],
@@ -124,7 +126,7 @@
     "abyss_victory": [720, 170, 1020, 290],
     "abyss_cards": [450, 550, 645, 650],
     "abyss_finished": [850, 70, 1080, 190],
-    "abyss_exhausted": [850, 70, 1080, 150],
+    "abyss_exhausted": [910, 85, 1060, 135],
     "monster_invasion": [195, 55, 335, 105],
     "monster_match": [570, 485, 730, 550],
     "monster_result": [350, 530, 650, 640],
@@ -218,7 +220,7 @@
   "task_templates": {
     "tower": {"source": "references\\tasks.png", "region": [127, 292, 177, 343]},
     "hunter_field": {"source": "references\\tasks.png", "region": [626, 465, 678, 517]},
-    "resource_supply": {"source": "references\\tasks_completed.png", "region": [124, 376, 330, 432]},
+    "resource_supply": {"source": "references\\tasks_current.png", "region": [188, 360, 300, 438]},
     "abyss": {"source": "references\\tasks.png", "region": [626, 378, 679, 430]},
     "monster_invasion": {"source": "references\\tasks_new.png", "region": [132, 375, 184, 428]},
     "hunter_league": {"source": "references\\tasks_new.png", "region": [132, 286, 184, 339]},
@@ -253,7 +255,7 @@
   "task_search_thresholds": {
     "tower": 0.9,
     "hunter_field": 0.85,
-    "resource_supply": 0.92,
+    "resource_supply": 0.84,
     "abyss": 0.85,
     "monster_invasion": 0.85,
     "hunter_league": 0.85,
@@ -263,7 +265,9 @@
   "task_scroll": {
     "from": [350, 491],
     "to": [350, 269],
-    "duration_seconds": 0.8
+    "duration_seconds": 0.8,
+    "reset_passes": 2,
+    "search_passes": 3
   },
   "reward_button_regions": [
     [450, 222, 580, 259],
@@ -287,6 +291,7 @@
   "tower_exit_max_clicks": 5,
   "tower_exit_retry_wait_seconds": 4,
   "transition_retry_max_clicks": 5,
+  "home_return_max_clicks": 3,
   "hunter_league_claim_region": [810, 235, 910, 290],
   "infinite_rank_dismiss_max_clicks": 5,
   "infinite_mystery_stage_count": 3,

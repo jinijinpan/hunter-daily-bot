@@ -920,9 +920,22 @@ class DailyBot:
         self.game.click_reference(self.config["points"]["main_secretary"], "打开小秘书")
         self.game.wait_for_page("tasks", tolerate_unknown=True)
 
+    def _reset_task_scroll_to_top(self) -> None:
+        scroll = self.config["task_scroll"]
+        for _ in range(int(scroll.get("reset_passes", 2))):
+            self.game.drag_reference(
+                scroll["to"],
+                scroll["from"],
+                scroll["duration_seconds"],
+                "重置小秘书任务列表到顶部",
+            )
+            self.game.wait_for_page("tasks", tolerate_unknown=True)
+
     def _find_task_button(self, task: str) -> tuple[tuple[int, int], bool] | None:
         scroll = self.config["task_scroll"]
-        for attempt in range(2):
+        self._reset_task_scroll_to_top()
+        search_passes = int(scroll.get("search_passes", 3))
+        for attempt in range(search_passes):
             image = self.game.normalized_capture()
             found = self.game.find_task(task, image)
             if found is not None:
@@ -942,7 +955,7 @@ class DailyBot:
                     completed,
                 )
                 return (button_x, icon_y), completed
-            if attempt == 0:
+            if attempt + 1 < search_passes:
                 self.game.drag_reference(
                     scroll["from"],
                     scroll["to"],
@@ -1671,10 +1684,25 @@ class DailyBot:
             raise SafetyStop(f"无限秘境出现未处理结算页面：{page}")
 
     def _return_home(self) -> None:
-        self.game.click_reference(self.config["points"]["home"], "返回主界面")
-        page = self.game.wait_for_one_of(
-            {"main", "trial"}, tolerate_unknown=True
-        )
+        max_clicks = max(1, int(self.config.get("home_return_max_clicks", 3)))
+        for attempt in range(max_clicks):
+            label = "返回主界面"
+            if attempt:
+                label += f"（重试 {attempt + 1}/{max_clicks}）"
+            self.game.click_reference(self.config["points"]["home"], label)
+            try:
+                page = self.game.wait_for_one_of(
+                    {"main", "trial"}, tolerate_unknown=True
+                )
+                break
+            except PageTimeout:
+                if attempt + 1 >= max_clicks:
+                    raise
+                logging.warning(
+                    "返回主界面未生效，将再次点击（%d/%d）。",
+                    attempt + 1,
+                    max_clicks,
+                )
         if page == "trial":
             self.game.click_reference(
                 self.config["points"]["home"], "从试炼大厅返回主界面"
@@ -1686,6 +1714,7 @@ class DailyBot:
         self.game.wait_for_page(return_page, tolerate_unknown=True)
 
     def _claim_task_rewards(self) -> None:
+        self._reset_task_scroll_to_top()
         regions = self.config["reward_button_regions"]
         max_passes = self.config["task_claim_max_passes"]
         scanned_lower_list = False

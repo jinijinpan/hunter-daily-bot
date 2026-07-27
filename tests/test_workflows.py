@@ -222,6 +222,17 @@ class CapturedWorkflowTests(unittest.TestCase):
         )
         self.assertEqual([("main", "trial"), "main"], game.waits)
 
+    def test_return_home_retries_when_first_click_is_ignored(self):
+        game = FakeGame([PageTimeout("home click ignored"), "main"])
+
+        DailyBot(game, self.config)._return_home()
+
+        self.assertEqual(
+            [self.config["points"]["home"]] * 2,
+            [list(point) for point, _label in game.clicks],
+        )
+        self.assertEqual([("main", "trial")] * 2, game.waits)
+
     def test_supply_stops_after_colored_button_returns_no_reward(self):
         game = FakeGame(["supply"])
         DailyBot(game, self.config)._collect_daily_supply()
@@ -694,6 +705,34 @@ class CapturedWorkflowTests(unittest.TestCase):
 
         self.assertEqual(((self.config["task_button_x"]["left"], 230), True), result)
         self.assertEqual([], game.clicks)
+
+    def test_task_search_resets_to_top_before_matching(self):
+        game = FakeGame()
+        game.find_task = lambda _task, _image: (152, 230, 0.99)
+
+        DailyBot(game, self.config)._find_task_button("tower")
+
+        scroll = self.config["task_scroll"]
+        self.assertEqual(
+            [(tuple(scroll["to"]), tuple(scroll["from"]))] * scroll["reset_passes"],
+            [(start, end) for start, end, _duration, _label in game.drags],
+        )
+
+    def test_task_search_scans_multiple_screens_from_the_top(self):
+        game = FakeGame()
+        results = [None, None, (652, 316, 0.99)]
+        game.find_task = lambda _task, _image: results.pop(0)
+
+        result = DailyBot(game, self.config)._find_task_button("hunter_field")
+
+        self.assertEqual(((self.config["task_button_x"]["right"], 316), True), result)
+        scroll = self.config["task_scroll"]
+        directions = [(start, end) for start, end, _duration, _label in game.drags]
+        self.assertEqual(
+            [(tuple(scroll["to"]), tuple(scroll["from"]))] * scroll["reset_passes"]
+            + [(tuple(scroll["from"]), tuple(scroll["to"]))] * 2,
+            directions,
+        )
 
     def test_completed_task_returns_home_before_scanning_next_adapter(self):
         config = copy.deepcopy(self.config)

@@ -57,6 +57,24 @@
       "forbidden_controls": ["claim", "go", "challenge", "quick_challenge", "return_safe"]
     },
     {
+      "file": "tower-calculating.webp",
+      "source": "runs/20260728-074808/observe-0045-unknown-normalized.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "unknown",
+      "expected_state": "loading",
+      "required_controls": [],
+      "forbidden_controls": ["home", "dismiss_result", "quick_challenge", "start_challenge"]
+    },
+    {
+      "file": "tower-result-failure.webp",
+      "source": "runs/20260728-191936/observe-0004-unknown-normalized.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "unknown",
+      "expected_state": "tower_result",
+      "required_controls": ["dismiss_result"],
+      "forbidden_controls": ["home", "quick_challenge", "start_challenge"]
+    },
+    {
       "file": "main.webp",
       "source": "recordings/20260725-210526/frame-0007-change.png",
       "expected_content_top": 53,
@@ -64,6 +82,78 @@
       "expected_state": "main",
       "required_controls": [],
       "forbidden_controls": []
+    },
+    {
+      "file": "dismissible-overlay.webp",
+      "source": "runs/20260728-200129/startup-unknown-normalized.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "unknown",
+      "expected_state": "dismissible_overlay",
+      "required_controls": ["dismiss_overlay"],
+      "forbidden_controls": ["home", "dismiss_result", "quick_challenge", "start_challenge"]
+    },
+    {
+      "file": "main-current.webp",
+      "source": "runs/20260728-205801/missing-control-secretary-normalized.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "main",
+      "expected_state": "main",
+      "required_controls": ["secretary"],
+      "forbidden_controls": ["dismiss_overlay", "dismiss_result", "quick_challenge"]
+    },
+    {
+      "file": "hunter-ready.webp",
+      "source": "references/hunter_field.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "hunter_field",
+      "expected_state": "hunter_field",
+      "required_controls": ["hunter_start"],
+      "forbidden_controls": ["quick_clear", "quick_disabled", "hunter_speed"]
+    },
+    {
+      "file": "hunter-quick-ready.webp",
+      "source": "references/hunter_quick_available.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "hunter_quick_available",
+      "expected_state": "hunter_quick_ready",
+      "required_controls": ["quick_clear"],
+      "forbidden_controls": ["hunter_start", "quick_disabled", "hunter_speed"]
+    },
+    {
+      "file": "hunter-failure.webp",
+      "source": "references/hunter_quick_failure.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "hunter_failure",
+      "expected_state": "hunter_failure",
+      "required_controls": ["hunter_speed"],
+      "forbidden_controls": ["home", "hunter_start", "hunter_confirm"]
+    },
+    {
+      "file": "hunter-confirm.webp",
+      "source": "references/hunter_quick_confirm.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "hunter_confirm",
+      "expected_state": "hunter_confirm",
+      "required_controls": ["hunter_confirm"],
+      "forbidden_controls": ["home", "hunter_start", "hunter_speed"]
+    },
+    {
+      "file": "hunter-reward.webp",
+      "source": "references/reward.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "reward",
+      "expected_state": "hunter_reward",
+      "required_controls": ["dismiss_reward"],
+      "forbidden_controls": ["home", "hunter_confirm", "hunter_speed"]
+    },
+    {
+      "file": "hunter-quick-current.webp",
+      "source": "runs/20260728-220508/inspect-hunter_field-normalized.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "hunter_field",
+      "expected_state": "hunter_quick_ready",
+      "required_controls": ["quick_clear"],
+      "forbidden_controls": ["hunter_start", "quick_disabled", "hunter_speed"]
     }
   ]
 }

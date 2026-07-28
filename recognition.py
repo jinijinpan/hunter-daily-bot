@@ -300,6 +300,7 @@ class RecognitionEngine:
         self.cv2 = cv2
         self.np = np
         self.ocr = ocr or LocalOCR()
+        self._template_control_cache: dict[tuple[str, tuple[int, ...]], Any] = {}
 
     @staticmethod
     def _crop(image: Any, rect: Iterable[int]) -> tuple[Any, tuple[int, int]]:
@@ -415,6 +416,47 @@ class RecognitionEngine:
         threshold = float(self.settings.get("ocr_match_threshold", 0.55))
         return best if best is not None and best[1] >= threshold else None
 
+    def _template_control(self, image: Any, spec: dict[str, Any]) -> DetectedControl | None:
+        source = Path(spec["source"])
+        if not source.is_absolute():
+            source = Path(__file__).resolve().parent / source
+        template_region = tuple(map(int, spec["template_region"]))
+        key = (str(source.resolve()), template_region)
+        template = self._template_control_cache.get(key)
+        if template is None:
+            encoded = self.np.fromfile(source, dtype=self.np.uint8)
+            reference = self.cv2.imdecode(encoded, self.cv2.IMREAD_GRAYSCALE)
+            if reference is None:
+                logging.warning("无法读取局部控件模板：%s", source)
+                return None
+            x1, y1, x2, y2 = template_region
+            template = reference[y1:y2, x1:x2]
+            if template.size == 0:
+                logging.warning("局部控件模板区域为空：%s %s", source, template_region)
+                return None
+            self._template_control_cache[key] = template
+
+        search, offset = self._crop(image, spec["search_region"])
+        if search.size == 0:
+            return None
+        gray = self.cv2.cvtColor(search, self.cv2.COLOR_BGR2GRAY)
+        if gray.shape[0] < template.shape[0] or gray.shape[1] < template.shape[1]:
+            return None
+        _minimum, maximum, _minimum_at, maximum_at = self.cv2.minMaxLoc(
+            self.cv2.matchTemplate(gray, template, self.cv2.TM_CCOEFF_NORMED)
+        )
+        score = float(maximum) if math.isfinite(maximum) else 0.0
+        if score < float(spec.get("threshold", 0.75)):
+            return None
+        x1 = offset[0] + int(maximum_at[0])
+        y1 = offset[1] + int(maximum_at[1])
+        return DetectedControl(
+            name=str(spec["name"]),
+            rect=(x1, y1, x1 + template.shape[1], y1 + template.shape[0]),
+            confidence=round(score, 4),
+            source="template",
+        )
+
     def detect_titles(
         self, image: Any, template_scores: dict[str, float]
     ) -> tuple[dict[str, float], list[OCRToken]]:
@@ -445,6 +487,12 @@ class RecognitionEngine:
     ) -> tuple[list[DetectedControl], list[OCRToken]]:
         controls: list[DetectedControl] = []
         all_tokens: list[OCRToken] = []
+        for spec in self.settings.get("template_controls", []):
+            if not self._enabled(spec, template_scores):
+                continue
+            control = self._template_control(image, spec)
+            if control is not None:
+                controls.append(control)
         for spec in self.settings.get("control_regions", []):
             if not self._enabled(spec, template_scores):
                 continue
@@ -540,6 +588,9 @@ class RecognitionEngine:
             numeric = rule.get("numeric_equals", {})
             if numeric and all(observation.numeric_values.get(name) == int(value) for name, value in numeric.items()):
                 signals["numeric"] = 1.0
+            numeric_any = rule.get("numeric_any", [])
+            if numeric_any and any(name in observation.numeric_values for name in numeric_any):
+                signals["numeric"] = 1.0
             text_aliases = rule.get("ocr_any", [])
             if text_aliases:
                 score = max((text_similarity(combined_text, alias) for alias in text_aliases), default=0.0)
@@ -583,6 +634,16 @@ class RecognitionEngine:
         if state == "unknown" and observation.frame_change > transient_threshold:
             state = "unknown_transient"
             confidence = min(1.0, observation.frame_change / max(1.0, transient_threshold * 3))
+        if state in {"loading", "unknown", "unknown_transient"}:
+            observation.controls = []
+        state_allowlists = self.settings.get("state_control_allowlists", {})
+        if state in state_allowlists:
+            allowed_controls = set(map(str, state_allowlists[state]))
+            observation.controls = [
+                control
+                for control in observation.controls
+                if control.name in allowed_controls
+            ]
         observation.state = state
         observation.state_confidence = confidence
         observation.signals = signals
@@ -617,14 +678,29 @@ class RecognitionEngine:
 
 
 class MultiFrameConsensus:
-    def __init__(self, required_frames: int = 2, max_frame_change: float = 3.0):
+    def __init__(
+        self,
+        required_frames: int = 2,
+        max_frame_change: float = 3.0,
+        max_frame_change_by_state: dict[str, float] | None = None,
+    ):
         self.required_frames = max(2, int(required_frames))
         self.max_frame_change = float(max_frame_change)
+        self.max_frame_change_by_state = {
+            str(state): float(value)
+            for state, value in (max_frame_change_by_state or {}).items()
+        }
         self._recent: deque[Observation] = deque(maxlen=self.required_frames)
 
+    def reset(self) -> None:
+        self._recent.clear()
+
     def update(self, observation: Observation) -> Observation | None:
-        if observation.state == "unknown" or observation.frame_change > self.max_frame_change:
-            self._recent.clear()
+        max_change = self.max_frame_change_by_state.get(
+            observation.state, self.max_frame_change
+        )
+        if observation.state == "unknown" or observation.frame_change > max_change:
+            self.reset()
             return None
         self._recent.append(observation)
         if len(self._recent) < self.required_frames:

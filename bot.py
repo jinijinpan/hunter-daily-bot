@@ -15,7 +15,9 @@ from typing import Any, Iterable
 from recognition import (
     CalibrationError,
     CapturedFrame,
+    DetectedControl,
     MultiFrameConsensus,
+    Observation,
     RecognitionEngine,
     ViewportCalibrator,
     frame_difference,
@@ -599,6 +601,369 @@ class DesktopGame:
         self.save_diagnostic(f"timeout-{expected_text}")
         raise PageTimeout(f"等待页面 {expected_text} 超时。最后匹配分数：{last_scores}")
 
+    def wait_for_state(
+        self,
+        expected: Iterable[str],
+        *,
+        timeout: float | None = None,
+        hard_timeout: float | None = None,
+        stable_frames: int | None = None,
+    ) -> Observation:
+        expected_states = {str(state) for state in expected}
+        if not expected_states:
+            raise ValueError("expected states must not be empty")
+        recognition_settings = self.config.get("recognition_v2", {})
+        wait_settings = recognition_settings.get("wait", {})
+        poll = float(self.config["timeouts"]["poll_seconds"])
+        soft_timeout = float(
+            self.config["timeouts"]["page_seconds"] if timeout is None else timeout
+        )
+        configured_hard = float(
+            wait_settings.get("page_hard_timeout_seconds", soft_timeout)
+        )
+        total_timeout = max(
+            soft_timeout,
+            configured_hard if hard_timeout is None else float(hard_timeout),
+        )
+        required_frames = max(
+            2,
+            int(
+                recognition_settings.get("stable_frames", 2)
+                if stable_frames is None
+                else stable_frames
+            ),
+        )
+        max_change = float(recognition_settings.get("stable_frame_change", 3.0))
+        max_change_by_state = recognition_settings.get(
+            "stable_frame_change_by_state", {}
+        )
+        extension = max(0.0, float(wait_settings.get("loading_extension_seconds", 3.0)))
+        consensus = MultiFrameConsensus(
+            required_frames, max_change, max_change_by_state
+        )
+        started = time.monotonic()
+        soft_deadline = started + soft_timeout
+        hard_deadline = started + total_timeout
+        final_sampling = False
+        last_observation: Observation | None = None
+
+        while time.monotonic() < hard_deadline:
+            last_observation = self.observe_frame()
+            stable = consensus.update(last_observation)
+            if stable is not None and stable.state in expected_states:
+                logging.info(
+                    "V2 状态已稳定：state=%s confidence=%.3f frames=%d",
+                    stable.state,
+                    stable.state_confidence,
+                    required_frames,
+                )
+                return stable
+
+            dynamic = (
+                last_observation.state in {"loading", "unknown_transient"}
+                or last_observation.frame_change > max_change
+            )
+            now = time.monotonic()
+            if dynamic and extension:
+                extended = min(hard_deadline, now + extension)
+                if extended > soft_deadline:
+                    soft_deadline = extended
+                    logging.debug(
+                        "V2 动态帧延长软等待：state=%s soft_remaining=%.2fs hard_remaining=%.2fs",
+                        last_observation.state,
+                        soft_deadline - now,
+                        hard_deadline - now,
+                    )
+            elif now >= soft_deadline:
+                if not final_sampling:
+                    final_sampling = True
+                    consensus.reset()
+                    soft_deadline = min(
+                        hard_deadline,
+                        now + max(0.05, poll * required_frames),
+                    )
+                    logging.info("V2 软超时已到，执行最后一组稳定帧采样。")
+                else:
+                    break
+            if poll > 0:
+                time.sleep(min(poll, max(0.0, hard_deadline - time.monotonic())))
+
+        expected_text = "、".join(sorted(expected_states))
+        self.save_diagnostic(f"timeout-state-{expected_text}")
+        last_state = last_observation.state if last_observation is not None else "none"
+        raise PageTimeout(
+            f"等待 V2 状态 {expected_text} 超时（硬上限 {total_timeout:.1f} 秒）。"
+            f"最后状态：{last_state}。"
+        )
+
+    @staticmethod
+    def _control_center(control: DetectedControl) -> tuple[int, int]:
+        x1, y1, x2, y2 = control.rect
+        return ((x1 + x2) // 2, (y1 + y2) // 2)
+
+    def _select_detected_control(
+        self,
+        observation: Observation,
+        name: str,
+        *,
+        preferred_point: Iterable[int] | None = None,
+        minimum_confidence: float | None = None,
+    ) -> DetectedControl | None:
+        wait_settings = self.config.get("recognition_v2", {}).get("wait", {})
+        threshold = float(
+            wait_settings.get("min_control_confidence", 0.7)
+            if minimum_confidence is None
+            else minimum_confidence
+        )
+        candidates = [
+            control
+            for control in observation.controls
+            if control.name == name and control.confidence >= threshold
+        ]
+        if not candidates:
+            return None
+        if preferred_point is None:
+            return max(candidates, key=lambda control: control.confidence)
+        preferred_x, preferred_y = map(int, preferred_point)
+        return min(
+            candidates,
+            key=lambda control: (
+                (self._control_center(control)[0] - preferred_x) ** 2
+                + (self._control_center(control)[1] - preferred_y) ** 2
+            ),
+        )
+
+    def _verify_detected_click(
+        self,
+        original: DetectedControl,
+        source_states: set[str],
+        target_states: set[str],
+        *,
+        timeout: float,
+        hard_timeout: float,
+    ) -> Observation | None:
+        settings = self.config.get("recognition_v2", {})
+        required_frames = max(2, int(settings.get("stable_frames", 2)))
+        max_change = float(settings.get("stable_frame_change", 3.0))
+        max_change_by_state = settings.get("stable_frame_change_by_state", {})
+        poll = float(self.config["timeouts"]["poll_seconds"])
+        consensus = MultiFrameConsensus(
+            required_frames, max_change, max_change_by_state
+        )
+        started = time.monotonic()
+        soft_deadline = started + timeout
+        hard_deadline = started + max(timeout, hard_timeout)
+        absent_frames = 0
+        last_observation: Observation | None = None
+        original_center = self._control_center(original)
+        target_single_frame_confidence = float(
+            settings.get("wait", {}).get(
+                "action_target_single_frame_confidence", 0.9
+            )
+        )
+        target_confidence_by_state = settings.get("wait", {}).get(
+            "action_target_single_frame_confidence_by_state", {}
+        )
+
+        while time.monotonic() < hard_deadline:
+            last_observation = self.observe_frame()
+            target_confidence = float(
+                target_confidence_by_state.get(
+                    last_observation.state, target_single_frame_confidence
+                )
+            )
+            if (
+                last_observation.state in target_states
+                and last_observation.state_confidence
+                >= target_confidence
+            ):
+                logging.info(
+                    "动作验证通过：高置信目标状态 %s confidence=%.3f。",
+                    last_observation.state,
+                    last_observation.state_confidence,
+                )
+                return last_observation
+            if last_observation.state in {"loading", "unknown_transient"}:
+                logging.info(
+                    "检测到动作过渡：state=%s frame_change=%.3f",
+                    last_observation.state,
+                    last_observation.frame_change,
+                )
+                return last_observation
+            stable = consensus.update(last_observation)
+            if stable is not None and stable.state in target_states:
+                return stable
+
+            same_control = self._select_detected_control(
+                last_observation,
+                original.name,
+                preferred_point=original_center,
+                minimum_confidence=0.0,
+            )
+            state_max_change = float(
+                max_change_by_state.get(last_observation.state, max_change)
+            )
+            frame_is_stable = last_observation.frame_change <= state_max_change
+            if frame_is_stable and same_control is None:
+                absent_frames += 1
+                if absent_frames >= required_frames:
+                    logging.info("动作验证通过：原控件 %s 已稳定消失。", original.name)
+                    return last_observation
+            else:
+                absent_frames = 0
+
+            now = time.monotonic()
+            if now >= soft_deadline and stable is not None and stable.state in source_states:
+                return None
+            if poll > 0:
+                time.sleep(min(poll, max(0.0, hard_deadline - time.monotonic())))
+        return None
+
+    def click_detected_control(
+        self,
+        name: str,
+        label: str,
+        *,
+        allowed_states: Iterable[str],
+        target_states: Iterable[str] = (),
+        observation: Observation | None = None,
+        preferred_point: Iterable[int] | None = None,
+        timeout: float | None = None,
+        hard_timeout: float | None = None,
+    ) -> Observation:
+        source_states = {str(state) for state in allowed_states}
+        targets = {str(state) for state in target_states}
+        if not source_states:
+            raise ValueError("allowed states must not be empty")
+        wait_settings = self.config.get("recognition_v2", {}).get("wait", {})
+        action_timeout = float(
+            wait_settings.get("action_timeout_seconds", 4.0)
+            if timeout is None
+            else timeout
+        )
+        action_hard_timeout = float(
+            wait_settings.get("action_hard_timeout_seconds", 12.0)
+            if hard_timeout is None
+            else hard_timeout
+        )
+        max_attempts = max(1, int(wait_settings.get("action_max_retries", 2)))
+        current = observation or self.wait_for_state(source_states)
+
+        for attempt in range(max_attempts):
+            if current.state not in source_states:
+                raise SafetyStop(
+                    f"控件 {name} 只允许在 {sorted(source_states)} 点击，当前为 {current.state}。"
+                )
+            control = self._select_detected_control(
+                current, name, preferred_point=preferred_point
+            )
+            if control is None:
+                self.save_diagnostic(f"missing-control-{name}")
+                raise SafetyStop(f"状态 {current.state} 未检测到可信控件 {name}，已停止。")
+            center = self._control_center(control)
+            absolute = self.geometry.point(center)
+            logging.info(
+                "%s：V2 控件=%s rect=%s confidence=%.3f source=%s center=%s screen=%s",
+                label,
+                name,
+                control.rect,
+                control.confidence,
+                control.source,
+                center,
+                absolute,
+            )
+            if not self.execute:
+                return current
+            self.focus()
+            self.pyautogui.click(*absolute)
+            result = self._verify_detected_click(
+                control,
+                source_states,
+                targets,
+                timeout=action_timeout,
+                hard_timeout=action_hard_timeout,
+            )
+            if result is not None:
+                return result
+            if attempt + 1 >= max_attempts:
+                break
+            logging.warning(
+                "%s 未产生可验证变化；重新聚焦并确认原控件后重试（%d/%d）。",
+                label,
+                attempt + 2,
+                max_attempts,
+            )
+            self.focus()
+            current = self.wait_for_state(
+                source_states,
+                timeout=action_timeout,
+                hard_timeout=action_hard_timeout,
+            )
+        self.save_diagnostic(f"action-failed-{name}")
+        raise SafetyStop(f"{label} 在 {max_attempts} 次可信点击后仍无可验证结果，已停止。")
+
+    def recover_to_state(
+        self,
+        expected: Iterable[str],
+        *,
+        hard_timeout: float | None = None,
+    ) -> Observation:
+        expected_states = {str(state) for state in expected}
+        routes = self.config.get("recognition_v2", {}).get(
+            "safe_recovery_routes", {}
+        )
+        candidate_states = expected_states | set(routes)
+        if not expected_states:
+            raise ValueError("expected states must not be empty")
+        configured = self.config.get("recognition_v2", {}).get("wait", {})
+        total_timeout = float(
+            configured.get("page_hard_timeout_seconds", 45.0)
+            if hard_timeout is None
+            else hard_timeout
+        )
+        deadline = time.monotonic() + total_timeout
+
+        while time.monotonic() < deadline:
+            remaining = max(0.05, deadline - time.monotonic())
+            observation = self.wait_for_state(
+                candidate_states,
+                timeout=min(float(self.config["timeouts"]["page_seconds"]), remaining),
+                hard_timeout=remaining,
+            )
+            if observation.state in expected_states:
+                return observation
+            route = routes.get(observation.state)
+            if route is None:
+                self.save_diagnostic(f"unsafe-recovery-{observation.state}")
+                raise SafetyStop(
+                    f"状态 {observation.state} 没有安全恢复动作，未执行点击。"
+                )
+            target_states = set(map(str, route.get("targets", [])))
+            logging.warning(
+                "安全恢复路由：state=%s control=%s targets=%s",
+                observation.state,
+                route["control"],
+                sorted(target_states),
+            )
+            action_budget = min(
+                remaining,
+                float(configured.get("action_hard_timeout_seconds", 12.0)),
+            )
+            self.click_detected_control(
+                str(route["control"]),
+                f"安全恢复 {observation.state}",
+                allowed_states={observation.state},
+                target_states=target_states,
+                observation=observation,
+                timeout=min(
+                    action_budget,
+                    float(configured.get("action_timeout_seconds", 4.0)),
+                ),
+                hard_timeout=action_budget,
+            )
+        self.save_diagnostic("recovery-hard-timeout")
+        raise PageTimeout(f"安全恢复到 {sorted(expected_states)} 超过硬上限 {total_timeout:.1f} 秒。")
+
     def click_reference(
         self,
         point: Iterable[int],
@@ -817,6 +1182,37 @@ class DailyBot:
         self.config = config
         self.resume = resume
 
+    def _use_v2_tower_flow(self) -> bool:
+        mode = (
+            self.config.get("recognition_v2", {})
+            .get("workflow_modes", {})
+            .get("main_tasks_tower", "legacy")
+        )
+        return (
+            mode == "v2"
+            and hasattr(self.game, "wait_for_state")
+            and hasattr(self.game, "click_detected_control")
+        )
+
+    def _allow_v2_legacy_fallback(self) -> bool:
+        return bool(
+            self.config.get("recognition_v2", {})
+            .get("workflow_modes", {})
+            .get("legacy_fallback", True)
+        )
+
+    def _use_v2_hunter_flow(self) -> bool:
+        mode = (
+            self.config.get("recognition_v2", {})
+            .get("workflow_modes", {})
+            .get("main_tasks_hunter_field", "legacy")
+        )
+        return (
+            mode == "v2"
+            and hasattr(self.game, "wait_for_state")
+            and hasattr(self.game, "click_detected_control")
+        )
+
     def run(self) -> None:
         self._configured_task_adapters()
         self.game.focus()
@@ -824,6 +1220,7 @@ class DailyBot:
         logging.info("当前页面：%s；匹配分数：%s", page, scores)
         resumable_pages = {
             "main",
+            "tasks",
             "trial",
             "tower_result",
             "tower_changed",
@@ -860,8 +1257,18 @@ class DailyBot:
             "character_switch",
         }
         if page not in resumable_pages:
-            self.game.save_diagnostic(f"startup-{page}")
-            raise SafetyStop("请先把小游戏停在主界面或已识别的断点页面，再运行脚本。")
+            if page == "unknown" and self.game.execute and self._use_v2_tower_flow():
+                logging.warning("旧识别无法确认启动页，尝试 V2 安全恢复到主界面。")
+                try:
+                    page = self.game.recover_to_state({"main"}).state
+                except (PageTimeout, SafetyStop) as exc:
+                    self.game.save_diagnostic("startup-unknown")
+                    raise SafetyStop(
+                        "启动页无法通过 V2 安全路由恢复，未执行未知页面点击。"
+                    ) from exc
+            else:
+                self.game.save_diagnostic(f"startup-{page}")
+                raise SafetyStop("请先把小游戏停在主界面或已识别的断点页面，再运行脚本。")
 
         if not self.game.execute:
             if page != "main":
@@ -870,9 +1277,11 @@ class DailyBot:
             self._dry_run()
             return
 
-        if page == "tower_result":
+        if page == "tasks":
+            self._return_home_v2()
+        elif page == "tower_result":
             self._finish_tower_quick_result()
-            self._return_home()
+            self._return_home_v2()
         elif page == "tower_changed":
             self._resume_tower_changed()
         elif page == "tower_post_battle":
@@ -887,8 +1296,15 @@ class DailyBot:
         elif page == "trial":
             self._return_home()
         elif page in {"hunter_field", "hunter_quick_available"}:
-            self._run_hunter_field(page)
-            self._return_home()
+            if self._use_v2_hunter_flow():
+                observation = self.game.wait_for_state(
+                    {"hunter_field", "hunter_quick_ready"}
+                )
+                self._run_hunter_field(observation.state)
+                self._return_home_v2()
+            else:
+                self._run_hunter_field(page)
+                self._return_home()
         elif page == "hunter_failure":
             self._finish_hunter_failure()
             self._return_home()
@@ -1034,7 +1450,24 @@ class DailyBot:
         self.game.wait_for_page("main", tolerate_unknown=True)
 
     def _open_daily_tasks(self) -> None:
+        if self._use_v2_tower_flow():
+            observation = self.game.wait_for_state({"main"})
+            self.game.click_detected_control(
+                "secretary",
+                "打开小秘书",
+                allowed_states={"main"},
+                target_states={"tasks"},
+                observation=observation,
+            )
+            self.game.wait_for_state({"tasks"})
+            return
         self.game.click_reference(self.config["points"]["main_secretary"], "打开小秘书")
+        self.game.wait_for_page("tasks", tolerate_unknown=True)
+
+    def _wait_for_tasks(self) -> None:
+        if self._use_v2_tower_flow():
+            self.game.wait_for_state({"tasks"})
+            return
         self.game.wait_for_page("tasks", tolerate_unknown=True)
 
     def _reset_task_scroll_to_top(self) -> None:
@@ -1046,7 +1479,7 @@ class DailyBot:
                 scroll["duration_seconds"],
                 "重置小秘书任务列表到顶部",
             )
-            self.game.wait_for_page("tasks", tolerate_unknown=True)
+            self._wait_for_tasks()
 
     def _find_task_button(self, task: str) -> tuple[tuple[int, int], bool] | None:
         scroll = self.config["task_scroll"]
@@ -1064,7 +1497,7 @@ class DailyBot:
                     scroll["duration_seconds"],
                     f"滚动查找任务 {task}",
                 )
-                self.game.wait_for_page("tasks", tolerate_unknown=True)
+                self._wait_for_tasks()
         logging.info("当前任务列表中未找到任务：%s", task)
         return None
 
@@ -1118,7 +1551,7 @@ class DailyBot:
                 scroll["duration_seconds"],
                 "扫描小秘书任务状态",
             )
-            self.game.wait_for_page("tasks", tolerate_unknown=True)
+            self._wait_for_tasks()
         logging.info(
             "小秘书任务预扫描：已完成 %d/%d 项。",
             len(completed),
@@ -1139,7 +1572,7 @@ class DailyBot:
             self._open_daily_tasks()
             self._claim_task_rewards()
             self.game.save_diagnostic(f"tasks-finished-role-{role_index + 1}")
-            self._return_home()
+            self._return_home_v2()
             if role_index + 1 < cycle_count:
                 self._switch_to_next_character()
 
@@ -1181,6 +1614,27 @@ class DailyBot:
         if completed:
             logging.info("任务 tower 已完成，等待统一领奖。")
             return None
+        if self._use_v2_tower_flow():
+            observation = self.game.wait_for_state({"tasks"})
+            self.game.click_detected_control(
+                "go",
+                "前往任务 tower",
+                allowed_states={"tasks"},
+                target_states={"tower_ready"},
+                observation=observation,
+                preferred_point=point,
+            )
+            try:
+                self.game.wait_for_state({"tower_ready"})
+                return "tower"
+            except PageTimeout:
+                if not self._allow_v2_legacy_fallback():
+                    raise
+                logging.warning("无尽塔入口 V2 状态未确认，切换到已配置的旧页面回退。")
+                return self.game.wait_for_one_of(
+                    {"tower", "tower_changed", "tower_manual"},
+                    tolerate_unknown=True,
+                )
         self.game.click_reference(point, "前往任务 tower")
         page = self.game.wait_for_one_of(
             {"tower", "tower_changed", "tower_manual"}, tolerate_unknown=True
@@ -1203,6 +1657,19 @@ class DailyBot:
         if completed:
             logging.info("任务 hunter_field 已完成，等待统一领奖。")
             return None
+        if self._use_v2_hunter_flow():
+            observation = self.game.wait_for_state({"tasks"})
+            self.game.click_detected_control(
+                "go",
+                "前往任务 hunter_field",
+                allowed_states={"tasks"},
+                target_states={"hunter_field", "hunter_quick_ready"},
+                observation=observation,
+                preferred_point=point,
+            )
+            return self.game.wait_for_state(
+                {"hunter_field", "hunter_quick_ready"}
+            ).state
         self.game.click_reference(point, "前往任务 hunter_field")
         return self.game.wait_for_one_of(
             {"hunter_field", "hunter_quick_available"}, tolerate_unknown=True
@@ -1212,16 +1679,18 @@ class DailyBot:
         adapters = self._configured_task_adapters()
         self._open_daily_tasks()
         completed_tasks = self._scan_completed_tasks(adapters)
-        self._return_home()
+        self._return_home_v2()
         for task in adapters:
             if task in completed_tasks:
                 logging.info("任务 %s 已完成，跳过重复查找和执行。", task)
                 continue
             self._open_daily_tasks()
             started = False
+            prefer_v2_return = False
             if task == "tower":
                 tower_mode = self._open_tower_task()
                 started = tower_mode is not None
+                prefer_v2_return = tower_mode in {None, "tower"}
                 if tower_mode == "tower":
                     self._run_tower()
                 elif tower_mode == "tower_manual":
@@ -1229,6 +1698,7 @@ class DailyBot:
             elif task == "hunter_field":
                 hunter_mode = self._open_hunter_task()
                 started = hunter_mode is not None
+                prefer_v2_return = self._use_v2_hunter_flow()
                 if hunter_mode is not None:
                     self._run_hunter_field(hunter_mode)
             elif task == "resource_supply":
@@ -1251,7 +1721,10 @@ class DailyBot:
                 started = self._open_infinite_task()
                 if started:
                     self._run_infinite_mystery()
-            self._return_home()
+            if prefer_v2_return:
+                self._return_home_v2()
+            else:
+                self._return_home()
 
     def _configured_task_adapters(self) -> list[str]:
         adapters = list(self.config.get("captured_task_adapters", []))
@@ -1323,6 +1796,25 @@ class DailyBot:
         raise SafetyStop(f"{label}连续点击后页面仍未切换，已停止。")
 
     def _run_tower(self) -> None:
+        if self._use_v2_tower_flow():
+            observation = self.game.wait_for_state({"tower_ready"})
+            self.game.click_detected_control(
+                "quick_challenge",
+                "无尽塔快速挑战",
+                allowed_states={"tower_ready"},
+                target_states={"tower_result", "tower_ready"},
+                observation=observation,
+            )
+            page = self.game.wait_for_state(
+                {"tower_result", "tower_ready"},
+                timeout=float(self.config["timeouts"]["page_seconds"]),
+                hard_timeout=float(self.config["timeouts"]["battle_seconds"]),
+            )
+            if page.state == "tower_result":
+                self._finish_tower_quick_result(page)
+            else:
+                logging.info("无尽塔计算结算后直接回到挑战页，无需关闭结算层。")
+            return
         self._click_until_transition(
             self.config["points"]["tower_quick"],
             "无尽塔快速挑战",
@@ -1331,7 +1823,20 @@ class DailyBot:
         )
         self._finish_tower_quick_result()
 
-    def _finish_tower_quick_result(self) -> None:
+    def _finish_tower_quick_result(
+        self, observation: Observation | None = None
+    ) -> None:
+        if self._use_v2_tower_flow():
+            observation = observation or self.game.wait_for_state({"tower_result"})
+            self.game.click_detected_control(
+                "dismiss_result",
+                "关闭无尽塔结算",
+                allowed_states={"tower_result"},
+                target_states={"tower_ready"},
+                observation=observation,
+            )
+            self.game.wait_for_state({"tower_ready"})
+            return
         self._click_until_transition(
             self.config["points"]["overlay_continue"],
             "关闭无尽塔结算",
@@ -1409,6 +1914,9 @@ class DailyBot:
         self._return_home()
 
     def _run_hunter_field(self, mode: str = "hunter_field") -> None:
+        if self._use_v2_hunter_flow():
+            self._run_hunter_field_v2(mode)
+            return
         points = self.config["points"]
         if mode == "hunter_quick_available":
             page = self._click_until_transition(
@@ -1431,6 +1939,72 @@ class DailyBot:
                 self._finish_hunter_failure()
                 return
         self._close_hunter_reward()
+
+    def _run_hunter_field_v2(self, mode: str) -> None:
+        battle_timeout = float(self.config["timeouts"]["battle_seconds"])
+        if mode == "hunter_quick_ready":
+            observation = self.game.wait_for_state({"hunter_quick_ready"})
+            self.game.click_detected_control(
+                "quick_clear",
+                "猎魔战场快速通关",
+                allowed_states={"hunter_quick_ready"},
+                target_states={"hunter_confirm", "hunter_reward"},
+                observation=observation,
+            )
+            page = self.game.wait_for_state(
+                {"hunter_confirm", "hunter_reward"},
+                hard_timeout=battle_timeout,
+            )
+        else:
+            observation = self.game.wait_for_state({"hunter_field"})
+            if not any(
+                control.name == "hunter_start"
+                for control in observation.controls
+            ):
+                raise SafetyStop(
+                    "猎魔战场仅检测到不可用的快速通关，未发现开始挑战按钮，已停止。"
+                )
+            self.game.click_detected_control(
+                "hunter_start",
+                "猎魔战场开始挑战",
+                allowed_states={"hunter_field"},
+                target_states={"hunter_failure", "hunter_reward"},
+                observation=observation,
+            )
+            page = self.game.wait_for_state(
+                {"hunter_failure", "hunter_reward"},
+                hard_timeout=battle_timeout,
+            )
+
+        if page.state == "hunter_failure":
+            self.game.click_detected_control(
+                "hunter_speed",
+                "猎魔战场速通上一关",
+                allowed_states={"hunter_failure"},
+                target_states={"hunter_confirm"},
+                observation=page,
+            )
+            page = self.game.wait_for_state({"hunter_confirm"})
+        if page.state == "hunter_confirm":
+            self.game.click_detected_control(
+                "hunter_confirm",
+                "确认猎魔战场快速通关",
+                allowed_states={"hunter_confirm"},
+                target_states={"hunter_reward"},
+                observation=page,
+            )
+            page = self.game.wait_for_state(
+                {"hunter_reward"}, hard_timeout=battle_timeout
+            )
+
+        self.game.click_detected_control(
+            "dismiss_reward",
+            "关闭猎魔战场奖励",
+            allowed_states={"hunter_reward"},
+            target_states={"hunter_field", "hunter_quick_ready"},
+            observation=page,
+        )
+        self.game.wait_for_state({"hunter_field", "hunter_quick_ready"})
 
     def _finish_hunter_failure(self) -> None:
         self._click_until_transition(
@@ -1850,6 +2424,19 @@ class DailyBot:
                 return
             raise SafetyStop(f"无限秘境出现未处理结算页面：{page}")
 
+    def _return_home_v2(self) -> None:
+        if self._use_v2_tower_flow():
+            self.game.recover_to_state(
+                {"main"},
+                hard_timeout=float(
+                    self.config.get("recognition_v2", {})
+                    .get("wait", {})
+                    .get("page_hard_timeout_seconds", 45.0)
+                ),
+            )
+            return
+        self._return_home()
+
     def _return_home(self) -> None:
         max_clicks = max(1, int(self.config.get("home_return_max_clicks", 3)))
         for attempt in range(max_clicks):
@@ -1897,7 +2484,7 @@ class DailyBot:
                         scroll["duration_seconds"],
                         "滚动查找可领取任务奖励",
                     )
-                    self.game.wait_for_page("tasks", tolerate_unknown=True)
+                    self._wait_for_tasks()
                     scanned_lower_list = True
                     continue
                 logging.info("当前可见任务页没有可领取奖励。")
@@ -2054,6 +2641,7 @@ def run_observation_mode(game: DesktopGame, config: dict[str, Any], duration: fl
     consensus = MultiFrameConsensus(
         required_frames=int(settings.get("stable_frames", 2)),
         max_frame_change=float(settings.get("stable_frame_change", 3.0)),
+        max_frame_change_by_state=settings.get("stable_frame_change_by_state", {}),
     )
     deadline = time.monotonic() + duration
     last_state: str | None = None

@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from bot import DailyBot, PageTimeout, SafetyStop
+from recognition import DetectedControl, Observation
 
 
 class FakeGame:
@@ -118,6 +119,215 @@ class CapturedWorkflowTests(unittest.TestCase):
             ],
             game.waits,
         )
+
+    def test_v2_main_tasks_tower_result_and_home_chain(self):
+        class ObservationGame:
+            def __init__(self, states):
+                self.states = list(states)
+                self.actions = []
+                self.recoveries = []
+
+            def wait_for_state(self, expected, **_kwargs):
+                state = self.states.pop(0)
+                if state not in expected:
+                    raise AssertionError(f"V2 state {state} not in {expected}")
+                return Observation(
+                    timestamp=1.0,
+                    viewport=(0, 0, 1091, 700),
+                    state=state,
+                    state_confidence=0.95,
+                )
+
+            def click_detected_control(self, name, _label, **kwargs):
+                self.actions.append(
+                    (name, kwargs["allowed_states"], kwargs["target_states"])
+                )
+                return Observation(
+                    timestamp=1.0,
+                    viewport=(0, 0, 1091, 700),
+                    state="unknown_transient",
+                    state_confidence=1.0,
+                    frame_change=20.0,
+                )
+
+            def recover_to_state(self, expected, **_kwargs):
+                self.recoveries.append(set(expected))
+                return Observation(
+                    timestamp=1.0,
+                    viewport=(0, 0, 1091, 700),
+                    state="main",
+                    state_confidence=0.95,
+                )
+
+        game = ObservationGame(
+            [
+                "main",
+                "tasks",
+                "tasks",
+                "tower_ready",
+                "tower_ready",
+                "tower_result",
+                "tower_ready",
+            ]
+        )
+        bot = DailyBot(game, self.config)
+        bot._find_task_button = lambda _task: ((512, 316), False)
+
+        bot._open_daily_tasks()
+        self.assertEqual("tower", bot._open_tower_task())
+        bot._run_tower()
+        bot._return_home_v2()
+
+        self.assertEqual(
+            ["secretary", "go", "quick_challenge", "dismiss_result"],
+            [name for name, _sources, _targets in game.actions],
+        )
+        self.assertEqual([{"main"}], game.recoveries)
+
+    def test_v2_tasks_hunter_failure_reward_and_home_chain(self):
+        class ObservationGame:
+            def __init__(self, states):
+                self.states = list(states)
+                self.actions = []
+                self.recoveries = []
+
+            def wait_for_state(self, expected, **_kwargs):
+                state = self.states.pop(0)
+                if state not in expected:
+                    raise AssertionError(f"V2 state {state} not in {expected}")
+                controls = []
+                if state == "hunter_field":
+                    controls.append(
+                        DetectedControl(
+                            "hunter_start", (925, 593, 1077, 635), 0.99, "color+ocr"
+                        )
+                    )
+                return Observation(
+                    timestamp=1.0,
+                    viewport=(0, 0, 1091, 700),
+                    state=state,
+                    state_confidence=0.99,
+                    controls=controls,
+                )
+
+            def click_detected_control(self, name, _label, **kwargs):
+                self.actions.append(
+                    (name, kwargs["allowed_states"], kwargs["target_states"])
+                )
+                return Observation(
+                    timestamp=1.0,
+                    viewport=(0, 0, 1091, 700),
+                    state="unknown_transient",
+                    state_confidence=1.0,
+                    frame_change=20.0,
+                )
+
+            def recover_to_state(self, expected, **_kwargs):
+                self.recoveries.append(set(expected))
+                return Observation(
+                    timestamp=1.0,
+                    viewport=(0, 0, 1091, 700),
+                    state="main",
+                    state_confidence=0.99,
+                )
+
+        game = ObservationGame(
+            [
+                "tasks",
+                "hunter_field",
+                "hunter_field",
+                "hunter_failure",
+                "hunter_confirm",
+                "hunter_reward",
+                "hunter_field",
+            ]
+        )
+        bot = DailyBot(game, self.config)
+        bot._find_task_button = lambda _task: ((1008, 503), False)
+
+        self.assertEqual("hunter_field", bot._open_hunter_task())
+        bot._run_hunter_field("hunter_field")
+        bot._return_home_v2()
+
+        self.assertEqual(
+            [
+                "go",
+                "hunter_start",
+                "hunter_speed",
+                "hunter_confirm",
+                "dismiss_reward",
+            ],
+            [name for name, _sources, _targets in game.actions],
+        )
+        self.assertEqual([{"main"}], game.recoveries)
+
+    def test_v2_hunter_disabled_stops_without_clicking(self):
+        class DisabledGame:
+            def __init__(self):
+                self.actions = []
+
+            def wait_for_state(self, expected, **_kwargs):
+                self.assert_expected = expected
+                return Observation(
+                    timestamp=1.0,
+                    viewport=(0, 0, 1091, 700),
+                    state="hunter_field",
+                    state_confidence=0.99,
+                    controls=[
+                        DetectedControl(
+                            "quick_disabled", (820, 570, 1010, 665), 0.99, "color+ocr"
+                        )
+                    ],
+                )
+
+            def click_detected_control(self, name, _label, **_kwargs):
+                self.actions.append(name)
+
+        game = DisabledGame()
+        bot = DailyBot(game, self.config)
+
+        with self.assertRaises(SafetyStop):
+            bot._run_hunter_field("hunter_field")
+
+        self.assertEqual([], game.actions)
+
+    def test_v2_startup_from_tasks_recovers_home_before_workflow(self):
+        game = FakeGame(detected_page="tasks")
+        game.wait_for_state = lambda *_args, **_kwargs: None
+        game.click_detected_control = lambda *_args, **_kwargs: None
+        recoveries = []
+        game.recover_to_state = lambda expected, **_kwargs: recoveries.append(set(expected))
+        bot = DailyBot(game, self.config)
+        bot._run_character_cycles = lambda: None
+        bot._report_unimplemented_tasks = lambda: None
+
+        bot.run()
+
+        self.assertEqual([{"main"}], recoveries)
+
+    def test_v2_unknown_startup_uses_safe_recovery_before_workflow(self):
+        game = FakeGame(detected_page="unknown")
+        game.wait_for_state = lambda *_args, **_kwargs: None
+        game.click_detected_control = lambda *_args, **_kwargs: None
+        recoveries = []
+
+        def recover(expected, **_kwargs):
+            recoveries.append(set(expected))
+            return Observation(
+                timestamp=1.0,
+                viewport=(0, 0, 1091, 700),
+                state="main",
+                state_confidence=0.95,
+            )
+
+        game.recover_to_state = recover
+        bot = DailyBot(game, self.config, resume=True)
+        bot._run_character_cycles = lambda: None
+        bot._report_unimplemented_tasks = lambda: None
+
+        bot.run()
+
+        self.assertEqual([{"main"}], recoveries)
 
     def test_tower_confirms_changed_difficulty_before_continuing(self):
         game = FakeGame(["tower_changed", "tower"])

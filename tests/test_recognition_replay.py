@@ -88,7 +88,7 @@ class RealScreenshotReplayTests(unittest.TestCase):
 
     def test_manifest_is_small_and_contains_runs_and_recordings(self):
         samples = self.manifest["samples"]
-        self.assertLessEqual(len(samples), 8)
+        self.assertLessEqual(len(samples), 18)
         sources = [sample["source"] for sample in samples]
         self.assertTrue(any(source.startswith("runs/") for source in sources))
         self.assertTrue(any(source.startswith("recordings/") for source in sources))
@@ -123,6 +123,40 @@ class RealScreenshotReplayTests(unittest.TestCase):
                 for rect in result["control_rects"].values():
                     self.assertLess(rect[0], rect[2])
                     self.assertLess(rect[1], rect[3])
+
+    def test_real_tower_result_detects_dismiss_control(self):
+        image = cv2.imdecode(
+            np.fromfile(ROOT / "references" / "tower_quick_result.png", dtype=np.uint8),
+            cv2.IMREAD_COLOR,
+        )
+        legacy_page, scores = self.matcher.detect_page(image)
+        observation = self.engine.observe(image, template_scores=scores)
+
+        self.assertEqual("tower_result", legacy_page)
+        self.assertEqual("tower_result", observation.state)
+        dismiss = [
+            control for control in observation.controls
+            if control.name == "dismiss_result"
+        ]
+        self.assertEqual(1, len(dismiss))
+        self.assertEqual("ocr", dismiss[0].source)
+
+    def test_explicit_dismiss_instruction_is_the_only_exposed_control(self):
+        sample = next(
+            item for item in self.manifest["samples"]
+            if item["file"] == "dismissible-overlay.webp"
+        )
+        result = replay_sample(
+            sample, FIXTURE_DIR, self.config, self.matcher, self.engine
+        )
+
+        self.assertEqual("dismissible_overlay", result["state"])
+        self.assertEqual(["dismiss_overlay"], result["controls"])
+        x1, y1, x2, y2 = result["control_rects"]["dismiss_overlay"]
+        self.assertGreaterEqual(x1, 400)
+        self.assertGreaterEqual(y1, 625)
+        self.assertLess(x2, 700)
+        self.assertLessEqual(y2, 700)
 
 
 class ObservationDecisionTests(unittest.TestCase):
@@ -159,6 +193,15 @@ class ObservationDecisionTests(unittest.TestCase):
         self.assertIsNone(consensus.update(self.observation(change=8.0)))
         self.assertIsNone(consensus.update(self.observation()))
         self.assertIsNone(consensus.update(self.observation(state="unknown")))
+
+    def test_consensus_supports_state_specific_animation_threshold(self):
+        consensus = MultiFrameConsensus(
+            required_frames=2,
+            max_frame_change=6.0,
+            max_frame_change_by_state={"main": 9.0},
+        )
+        self.assertIsNone(consensus.update(self.observation(state="main", change=7.5)))
+        self.assertIsNotNone(consensus.update(self.observation(state="main", change=8.0)))
 
     def test_annotation_draws_control_and_state(self):
         image = np.zeros((120, 240, 3), dtype=np.uint8)

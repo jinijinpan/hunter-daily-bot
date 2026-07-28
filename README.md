@@ -106,16 +106,30 @@ python compress_recordings.py
 
 ## 验证
 
-运行离线测试：
+开发期默认运行快速测试；该入口强制使用 CPU，并跳过完整真实 OCR 回放：
 
 ```powershell
-python -m unittest discover -s tests -v
+python run_tests.py
+```
+
+里程碑验收运行完整测试：
+
+```powershell
+python run_tests.py --profile full
 ```
 
 单独回放从真实失败运行和录制中挑选的最小识别数据集：
 
 ```powershell
 python replay_recognition.py
+```
+
+OCR 后端、可选 CUDA/DirectML 依赖和基准方法见
+[`docs/ocr-backends.md`](docs/ocr-backends.md)。性能基准会记录预热、墙钟时间、
+进程 CPU 时间、实际 Provider、OCR 结果和可选的完整回放签名：
+
+```powershell
+python benchmark_ocr.py --backend cpu --backend auto --iterations 5 --replay
 ```
 
 测试覆盖视口校准缓存、在线/离线标准化一致性、真实截图页面与局部控件识别、多帧一致性、坐标缩放、页面模板、任务重排、活跃宝箱状态、无尽塔/猎魔计算阶段防误点，以及任务状态机的操作顺序。

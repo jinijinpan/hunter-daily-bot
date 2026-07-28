@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -86,6 +87,9 @@ def replay_sample(
         "state": observation.state,
         "state_confidence": observation.state_confidence,
         "controls": sorted({control.name for control in observation.controls}),
+        "control_counts": dict(
+            sorted(Counter(control.name for control in observation.controls).items())
+        ),
         "control_rects": {
             control.name: list(control.rect) for control in observation.controls
         },

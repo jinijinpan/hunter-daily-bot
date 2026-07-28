@@ -733,6 +733,25 @@ class DesktopGame:
             ),
         )
 
+    def _same_detected_control(
+        self,
+        original: DetectedControl,
+        candidate: DetectedControl | None,
+    ) -> bool:
+        if candidate is None:
+            return False
+        original_x, original_y = self._control_center(original)
+        candidate_x, candidate_y = self._control_center(candidate)
+        max_distance = float(
+            self.config.get("recognition_v2", {})
+            .get("wait", {})
+            .get("action_control_match_distance", 24.0)
+        )
+        return (
+            (candidate_x - original_x) ** 2 + (candidate_y - original_y) ** 2
+            <= max_distance**2
+        )
+
     def _verify_detected_click(
         self,
         original: DetectedControl,
@@ -804,7 +823,9 @@ class DesktopGame:
                 max_change_by_state.get(last_observation.state, max_change)
             )
             frame_is_stable = last_observation.frame_change <= state_max_change
-            if frame_is_stable and same_control is None:
+            if frame_is_stable and not self._same_detected_control(
+                original, same_control
+            ):
                 absent_frames += 1
                 if absent_frames >= required_frames:
                     logging.info("动作验证通过：原控件 %s 已稳定消失。", original.name)
@@ -1194,6 +1215,39 @@ class DailyBot:
             and hasattr(self.game, "click_detected_control")
         )
 
+    def _use_v2_main_tasks_flow(self) -> bool:
+        modes = self.config.get("recognition_v2", {}).get("workflow_modes", {})
+        return (
+            modes.get("main_tasks_claim", "legacy") == "v2"
+            or self._use_v2_tower_flow()
+            or self._use_v2_hunter_flow()
+        ) and all(
+            hasattr(self.game, name)
+            for name in ("wait_for_state", "click_detected_control", "recover_to_state")
+        )
+
+    def _use_v2_task_claim_flow(self) -> bool:
+        mode = (
+            self.config.get("recognition_v2", {})
+            .get("workflow_modes", {})
+            .get("main_tasks_claim", "legacy")
+        )
+        return mode == "v2" and all(
+            hasattr(self.game, name)
+            for name in ("wait_for_state", "click_detected_control")
+        )
+
+    def _use_v2_reward_flow(self) -> bool:
+        mode = (
+            self.config.get("recognition_v2", {})
+            .get("workflow_modes", {})
+            .get("generic_reward", "legacy")
+        )
+        return mode == "v2" and all(
+            hasattr(self.game, name)
+            for name in ("wait_for_state", "click_detected_control")
+        )
+
     def _allow_v2_legacy_fallback(self) -> bool:
         return bool(
             self.config.get("recognition_v2", {})
@@ -1450,7 +1504,7 @@ class DailyBot:
         self.game.wait_for_page("main", tolerate_unknown=True)
 
     def _open_daily_tasks(self) -> None:
-        if self._use_v2_tower_flow():
+        if self._use_v2_main_tasks_flow():
             observation = self.game.wait_for_state({"main"})
             self.game.click_detected_control(
                 "secretary",
@@ -1465,7 +1519,7 @@ class DailyBot:
         self.game.wait_for_page("tasks", tolerate_unknown=True)
 
     def _wait_for_tasks(self) -> None:
-        if self._use_v2_tower_flow():
+        if self._use_v2_main_tasks_flow():
             self.game.wait_for_state({"tasks"})
             return
         self.game.wait_for_page("tasks", tolerate_unknown=True)
@@ -1802,7 +1856,7 @@ class DailyBot:
                 "quick_challenge",
                 "无尽塔快速挑战",
                 allowed_states={"tower_ready"},
-                target_states={"tower_result", "tower_ready"},
+                target_states={"tower_result"},
                 observation=observation,
             )
             page = self.game.wait_for_state(
@@ -1948,11 +2002,11 @@ class DailyBot:
                 "quick_clear",
                 "猎魔战场快速通关",
                 allowed_states={"hunter_quick_ready"},
-                target_states={"hunter_confirm", "hunter_reward"},
+                target_states={"hunter_confirm", "reward"},
                 observation=observation,
             )
             page = self.game.wait_for_state(
-                {"hunter_confirm", "hunter_reward"},
+                {"hunter_confirm", "reward"},
                 hard_timeout=battle_timeout,
             )
         else:
@@ -1968,11 +2022,11 @@ class DailyBot:
                 "hunter_start",
                 "猎魔战场开始挑战",
                 allowed_states={"hunter_field"},
-                target_states={"hunter_failure", "hunter_reward"},
+                target_states={"hunter_failure", "reward"},
                 observation=observation,
             )
             page = self.game.wait_for_state(
-                {"hunter_failure", "hunter_reward"},
+                {"hunter_failure", "reward"},
                 hard_timeout=battle_timeout,
             )
 
@@ -1990,17 +2044,17 @@ class DailyBot:
                 "hunter_confirm",
                 "确认猎魔战场快速通关",
                 allowed_states={"hunter_confirm"},
-                target_states={"hunter_reward"},
+                target_states={"reward"},
                 observation=page,
             )
             page = self.game.wait_for_state(
-                {"hunter_reward"}, hard_timeout=battle_timeout
+                {"reward"}, hard_timeout=battle_timeout
             )
 
         self.game.click_detected_control(
             "dismiss_reward",
             "关闭猎魔战场奖励",
-            allowed_states={"hunter_reward"},
+            allowed_states={"reward"},
             target_states={"hunter_field", "hunter_quick_ready"},
             observation=page,
         )
@@ -2425,7 +2479,7 @@ class DailyBot:
             raise SafetyStop(f"无限秘境出现未处理结算页面：{page}")
 
     def _return_home_v2(self) -> None:
-        if self._use_v2_tower_flow():
+        if self._use_v2_main_tasks_flow():
             self.game.recover_to_state(
                 {"main"},
                 hard_timeout=float(
@@ -2463,11 +2517,148 @@ class DailyBot:
             )
             self.game.wait_for_page("main", tolerate_unknown=True)
 
-    def _dismiss_reward(self, return_page: str) -> None:
+    def _dismiss_reward(
+        self,
+        return_page: str,
+        observation: Observation | None = None,
+    ) -> None:
+        if self._use_v2_reward_flow():
+            observation = observation or self.game.wait_for_state({"reward"})
+            target_states = (
+                {return_page}
+                if return_page
+                in {
+                    "main",
+                    "tasks",
+                    "tower_ready",
+                    "hunter_field",
+                    "hunter_quick_ready",
+                }
+                else set()
+            )
+            result = self.game.click_detected_control(
+                "dismiss_reward",
+                "关闭奖励弹窗",
+                allowed_states={"reward"},
+                target_states=target_states,
+                observation=observation,
+            )
+            if return_page == "tasks":
+                if result.state != "tasks":
+                    self.game.wait_for_state({"tasks"})
+                return
+            if return_page in target_states:
+                if result.state != return_page:
+                    self.game.wait_for_state({return_page})
+                return
+            self.game.wait_for_page(return_page, tolerate_unknown=True)
+            return
         self.game.click_reference(self.config["points"]["overlay_continue"], "关闭奖励弹窗")
         self.game.wait_for_page(return_page, tolerate_unknown=True)
 
     def _claim_task_rewards(self) -> None:
+        if self._use_v2_task_claim_flow():
+            self._claim_task_rewards_v2()
+            return
+        self._claim_task_rewards_legacy()
+
+    @staticmethod
+    def _claim_location(control: DetectedControl, scan_index: int) -> tuple[int, int, int]:
+        x1, y1, x2, y2 = control.rect
+        return (scan_index, ((x1 + x2) // 2) // 8, ((y1 + y2) // 2) // 8)
+
+    def _claim_task_rewards_v2(self) -> None:
+        self._reset_task_scroll_to_top()
+        observation = self.game.wait_for_state({"tasks"})
+        attempted: set[tuple[int, int, int]] = set()
+        scan_index = 0
+        claimed = 0
+        max_claims = max(1, int(self.config["task_claim_max_passes"]))
+
+        while claimed < max_claims:
+            claims = sorted(
+                (
+                    control
+                    for control in observation.controls
+                    if control.name == "claim"
+                    and self._claim_location(control, scan_index) not in attempted
+                ),
+                key=lambda control: (-control.confidence, control.rect),
+            )
+            if claims:
+                claim = claims[0]
+                location = self._claim_location(claim, scan_index)
+                attempted.add(location)
+                center = DesktopGame._control_center(claim)
+                logging.info(
+                    "任务领奖 V2：选择当前最高置信控件 rect=%s confidence=%.3f（%d/%d）。",
+                    claim.rect,
+                    claim.confidence,
+                    claimed + 1,
+                    max_claims,
+                )
+                result = self.game.click_detected_control(
+                    "claim",
+                    "领取每日任务奖励",
+                    allowed_states={"tasks"},
+                    target_states={"reward"},
+                    observation=observation,
+                    preferred_point=center,
+                )
+                claimed += 1
+                if result.state == "reward":
+                    self._dismiss_reward("tasks", result)
+                    observation = self.game.wait_for_state({"tasks"})
+                elif result.state == "tasks":
+                    observation = result
+                else:
+                    observation = self.game.wait_for_state({"tasks", "reward"})
+                    if observation.state == "reward":
+                        self._dismiss_reward("tasks", observation)
+                        observation = self.game.wait_for_state({"tasks"})
+                continue
+
+            visible_claims = [
+                control for control in observation.controls if control.name == "claim"
+            ]
+            if visible_claims:
+                logging.warning(
+                    "当前剩余 %d 个 claim 均已尝试，停止重复点击。",
+                    len(visible_claims),
+                )
+                self.game.save_diagnostic("task-claim-stale-control")
+                raise SafetyStop(
+                    "已点击的 claim 仍作为同一可见控件出现，已停止以防重复领取。"
+                )
+            if scan_index == 0:
+                scroll = self.config["task_scroll"]
+                self.game.drag_reference(
+                    scroll["from"],
+                    scroll["to"],
+                    scroll["duration_seconds"],
+                    "滚动查找可领取任务奖励",
+                )
+                scan_index = 1
+                observation = self.game.wait_for_state({"tasks"})
+                continue
+            logging.info("当前任务列表已无可领取奖励，共领取 %d 项。", claimed)
+            self._claim_activity_rewards()
+            return
+
+        observation = self.game.wait_for_state({"tasks"})
+        if any(
+            control.name == "claim"
+            and self._claim_location(control, scan_index) not in attempted
+            for control in observation.controls
+        ):
+            self.game.save_diagnostic("task-claim-limit")
+            raise SafetyStop(
+                f"领取 {claimed} 项任务奖励后仍有新的 claim，已在安全上限停止。"
+            )
+        logging.info("已领取 %d 项任务奖励，未发现新的 claim。", claimed)
+        self._claim_activity_rewards()
+
+    def _claim_task_rewards_legacy(self) -> None:
         self._reset_task_scroll_to_top()
         regions = self.config["reward_button_regions"]
         max_passes = self.config["task_claim_max_passes"]

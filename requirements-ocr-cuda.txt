@@ -1,0 +1,2 @@
+# Replace onnxruntime with this package; do not install both distributions together.
+onnxruntime-gpu>=1.20,<2

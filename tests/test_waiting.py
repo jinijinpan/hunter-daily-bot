@@ -240,6 +240,30 @@ class ObservationWaitingTests(unittest.TestCase):
         self.assertEqual("main", result.state)
         self.assertEqual([(20, 30)], clicks)
 
+    def test_click_verifies_original_claim_disappeared_when_other_claims_remain(self):
+        original = DetectedControl("claim", (10, 20, 30, 40), 0.99, "color+ocr")
+        other = DetectedControl("claim", (110, 20, 130, 40), 0.98, "color+ocr")
+        source = self.observation("tasks", controls=[original, other])
+        remaining = self.observation("tasks", controls=[other])
+        game = self.sequence_game([remaining, remaining])
+        clicks = []
+        game.execute = True
+        game.geometry = SimpleNamespace(point=lambda point: point)
+        game.pyautogui = SimpleNamespace(click=lambda *point: clicks.append(point))
+        game.focus = lambda: None
+
+        result = game.click_detected_control(
+            "claim",
+            "领取任务奖励",
+            allowed_states={"tasks"},
+            target_states={"reward"},
+            observation=source,
+            preferred_point=(20, 30),
+        )
+
+        self.assertEqual("tasks", result.state)
+        self.assertEqual([(20, 30)], clicks)
+
     def test_click_detected_control_rejects_wrong_source_state(self):
         control = DetectedControl("home", (10, 20, 30, 40), 0.99, "template")
         source = self.observation("unknown", controls=[control])

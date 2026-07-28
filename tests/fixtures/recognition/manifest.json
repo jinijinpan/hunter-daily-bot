@@ -12,6 +12,16 @@
       "forbidden_controls": []
     },
     {
+      "file": "tasks-claim-current.webp",
+      "source": "runs/20260728-222410/tasks-finished-role-1-raw.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "tasks",
+      "expected_state": "tasks",
+      "required_controls": ["claim", "go"],
+      "forbidden_controls": [],
+      "expected_control_counts": {"claim": 5}
+    },
+    {
       "file": "tower-ready.webp",
       "source": "runs/20260727-203905/timeout-tower、tower_manual.png",
       "expected_content_top": 53,
@@ -142,7 +152,7 @@
       "source": "references/reward.png",
       "expected_content_top": 53,
       "expected_legacy_page": "reward",
-      "expected_state": "hunter_reward",
+      "expected_state": "reward",
       "required_controls": ["dismiss_reward"],
       "forbidden_controls": ["home", "hunter_confirm", "hunter_speed"]
     },

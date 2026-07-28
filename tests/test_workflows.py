@@ -184,6 +184,208 @@ class CapturedWorkflowTests(unittest.TestCase):
         )
         self.assertEqual([{"main"}], game.recoveries)
 
+    def test_v2_vertical_chain_challenges_then_returns_and_claims_reward(self):
+        def observed(state, controls=()):
+            return Observation(
+                timestamp=1.0,
+                viewport=(0, 0, 1091, 700),
+                state=state,
+                state_confidence=0.99,
+                controls=list(controls),
+            )
+
+        claim = DetectedControl(
+            "claim", (450, 220, 578, 257), 0.9996, "color+ocr"
+        )
+
+        class VerticalGame:
+            def __init__(self):
+                self.observations = [
+                    observed("main"),
+                    observed("tasks"),
+                    observed("tasks"),
+                    observed("tower_ready"),
+                    observed("tower_ready"),
+                    observed("tower_result"),
+                    observed("tower_ready"),
+                    observed("main"),
+                    observed("tasks", [claim]),
+                    observed("tasks", [claim]),
+                    observed("tasks"),
+                    observed("tasks"),
+                ]
+                self.actions = []
+                self.recoveries = []
+                self.drags = []
+
+            def wait_for_state(self, expected, **_kwargs):
+                observation = self.observations.pop(0)
+                if observation.state not in expected:
+                    raise AssertionError(
+                        f"V2 state {observation.state} not in {expected}"
+                    )
+                return observation
+
+            def click_detected_control(self, name, _label, **kwargs):
+                self.actions.append(name)
+                if name == "claim":
+                    return observed("reward", [
+                        DetectedControl(
+                            "dismiss_reward", (400, 570, 700, 660), 0.99, "ocr"
+                        )
+                    ])
+                if name == "dismiss_reward":
+                    return observed("tasks")
+                return observed("unknown_transient")
+
+            def recover_to_state(self, expected, **_kwargs):
+                self.recoveries.append(set(expected))
+                return observed("main")
+
+            def drag_reference(self, start, end, _duration, label):
+                self.drags.append((start, end, label))
+
+            def save_diagnostic(self, _name):
+                pass
+
+        game = VerticalGame()
+        bot = DailyBot(game, self.config)
+        bot._find_task_button = lambda _task: ((512, 316), False)
+        bot._claim_activity_rewards = lambda: None
+
+        bot._open_daily_tasks()
+        self.assertEqual("tower", bot._open_tower_task())
+        bot._run_tower()
+        bot._return_home_v2()
+        bot._open_daily_tasks()
+        bot._reset_task_scroll_to_top = lambda: None
+        bot._claim_task_rewards()
+        bot._return_home_v2()
+
+        self.assertEqual(
+            [
+                "secretary",
+                "go",
+                "quick_challenge",
+                "dismiss_result",
+                "secretary",
+                "claim",
+                "dismiss_reward",
+            ],
+            game.actions,
+        )
+        self.assertEqual([{"main"}, {"main"}], game.recoveries)
+        self.assertEqual([], game.observations)
+
+    def test_v2_task_claims_choose_one_highest_confidence_control_at_a_time(self):
+        def tasks(*controls):
+            return Observation(
+                timestamp=1.0,
+                viewport=(0, 0, 1091, 700),
+                state="tasks",
+                state_confidence=0.99,
+                controls=list(controls),
+            )
+
+        low = DetectedControl("claim", (10, 20, 30, 40), 0.80, "color+ocr")
+        high = DetectedControl("claim", (110, 20, 130, 40), 0.99, "color+ocr")
+        middle = DetectedControl("claim", (210, 20, 230, 40), 0.90, "color+ocr")
+
+        class ClaimGame:
+            def __init__(self):
+                self.waits = [tasks(low, high, middle), tasks()]
+                self.results = [tasks(low, middle), tasks(low), tasks()]
+                self.points = []
+
+            def wait_for_state(self, expected, **_kwargs):
+                result = self.waits.pop(0)
+                self.assert_expected = expected
+                return result
+
+            def click_detected_control(self, name, _label, **kwargs):
+                self.points.append((name, kwargs["preferred_point"]))
+                return self.results.pop(0)
+
+            def drag_reference(self, *_args):
+                pass
+
+            def save_diagnostic(self, _name):
+                pass
+
+            def recover_to_state(self, expected, **_kwargs):
+                return tasks()
+
+        game = ClaimGame()
+        bot = DailyBot(game, self.config)
+        bot._reset_task_scroll_to_top = lambda: None
+        bot._claim_activity_rewards = lambda: None
+
+        bot._claim_task_rewards()
+
+        self.assertEqual(
+            [("claim", (120, 30)), ("claim", (220, 30)), ("claim", (20, 30))],
+            game.points,
+        )
+
+    def test_v2_task_claim_does_not_repeat_a_stale_claim(self):
+        claim = DetectedControl("claim", (10, 20, 30, 40), 0.99, "color+ocr")
+        observation = Observation(
+            timestamp=1.0,
+            viewport=(0, 0, 1091, 700),
+            state="tasks",
+            state_confidence=0.99,
+            controls=[claim],
+        )
+
+        class StaleClaimGame:
+            def __init__(self):
+                self.clicks = 0
+                self.diagnostics = []
+
+            def wait_for_state(self, expected, **_kwargs):
+                self.assert_expected = expected
+                return observation
+
+            def click_detected_control(self, *_args, **_kwargs):
+                self.clicks += 1
+                return observation
+
+            def save_diagnostic(self, name):
+                self.diagnostics.append(name)
+
+            def recover_to_state(self, expected, **_kwargs):
+                return observation
+
+        game = StaleClaimGame()
+        bot = DailyBot(game, self.config)
+        bot._reset_task_scroll_to_top = lambda: None
+
+        with self.assertRaises(SafetyStop):
+            bot._claim_task_rewards()
+
+        self.assertEqual(1, game.clicks)
+        self.assertEqual(["task-claim-stale-control"], game.diagnostics)
+
+    def test_task_claim_can_be_rolled_back_to_legacy_independently(self):
+        config = copy.deepcopy(self.config)
+        config["recognition_v2"]["workflow_modes"]["main_tasks_claim"] = "legacy"
+        regions = config["reward_button_regions"]
+        game = FakeGame(gold_results=[False] * (len(regions) * 2))
+        detected_actions = []
+        game.wait_for_state = lambda *_args, **_kwargs: None
+        game.click_detected_control = (
+            lambda *args, **_kwargs: detected_actions.append((args, kwargs))
+        )
+        game.recover_to_state = lambda *_args, **_kwargs: None
+        bot = DailyBot(game, config)
+        bot._reset_task_scroll_to_top = lambda: None
+        bot._claim_activity_rewards = lambda: None
+
+        bot._claim_task_rewards()
+
+        self.assertEqual([], detected_actions)
+        self.assertEqual(1, len(game.drags))
+
     def test_v2_tasks_hunter_failure_reward_and_home_chain(self):
         class ObservationGame:
             def __init__(self, states):
@@ -238,7 +440,7 @@ class CapturedWorkflowTests(unittest.TestCase):
                 "hunter_field",
                 "hunter_failure",
                 "hunter_confirm",
-                "hunter_reward",
+                "reward",
                 "hunter_field",
             ]
         )

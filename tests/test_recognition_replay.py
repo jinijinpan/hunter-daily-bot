@@ -120,6 +120,8 @@ class RealScreenshotReplayTests(unittest.TestCase):
                 controls = set(result["controls"])
                 self.assertTrue(set(sample["required_controls"]).issubset(controls))
                 self.assertTrue(set(sample["forbidden_controls"]).isdisjoint(controls))
+                for name, count in sample.get("expected_control_counts", {}).items():
+                    self.assertEqual(count, result["control_counts"].get(name, 0))
                 for rect in result["control_rects"].values():
                     self.assertLess(rect[0], rect[2])
                     self.assertLess(rect[1], rect[3])

@@ -289,6 +289,63 @@ tests/fixtures/recognition/
 
 每迁移一个流程，都保留旧实现作为配置回退，直到真实环境通过。
 
+#### 里程碑 4P：测试性能与 GPU OCR 后端
+
+全量测试中的主要高负载来自真实截图 OCR 重复推理和 OpenCV 模板匹配。GPU 优化必须先测量瓶颈，不能假设所有图像处理都能直接转移到显卡。
+
+当前开发机基线：
+
+- GPU：NVIDIA GeForce RTX 3060 Ti，8GB 显存。
+- NVIDIA 驱动可用，`nvidia-smi` 报告 CUDA Driver API 13.1。
+- 当前 ONNX Runtime 仅有 `CPUExecutionProvider` 和 `AzureExecutionProvider`。
+- 当前 `opencv-python` 没有 CUDA 设备支持，模板匹配仍运行在 CPU。
+- RapidOCR 配置支持 `det_use_cuda`、`cls_use_cuda`、`rec_use_cuda`，也支持 DirectML。
+
+实施任务：
+
+1. 新增 OCR 性能基准工具，分别记录预热后墙钟时间、进程 CPU 时间、识别结果和实际 ONNX Provider。
+2. 将 OCR 后端配置化为 `auto`、`cuda`、`dml`、`cpu`。
+3. `auto` 按 `CUDA -> DirectML -> CPU` 的顺序探测，但只有初始化和最小推理自检成功后才启用该后端。
+4. 在日志中明确打印实际 Provider；不得仅根据配置宣称正在使用 GPU。
+5. CUDA 方案使用 `onnxruntime-gpu`，需要与其要求的 CUDA/cuDNN 运行库匹配。当前机器只有 NVIDIA 驱动，没有发现 `nvcc` 或 cuDNN DLL，因此安装前必须验证依赖方案。
+6. DirectML 作为 Windows 上无需单独 CUDA Toolkit 的备选方案，但必须实测速度和识别一致性。
+7. GPU 初始化、模型加载或推理失败时自动回退 CPU，并记录一次清晰警告；不能让自动化流程因可选 GPU 后端不可用而停止。
+8. 不在同一 Python 环境中无条件同时安装互相冲突的 `onnxruntime`、`onnxruntime-gpu` 和 `onnxruntime-directml`。将 GPU 依赖放入独立可选 requirements 文件或安装脚本。
+9. 复用单个 OCR 引擎实例，避免每个测试重新加载模型或重复占用显存。
+10. 对回放测试增加按“标准化图哈希 + ROI + OCR 配置 + 模型版本”索引的进程内缓存，避免同一裁剪区域重复推理。
+11. 将测试划分为快速测试与完整 OCR 回放测试。开发期默认运行快速测试，里程碑验收和提交前运行完整测试。
+12. 保持 OpenCV 模板匹配为 CPU 实现，除非独立基准证明自行维护 CUDA OpenCV 构建有明确收益。第一阶段不编译自定义 OpenCV。
+
+建议配置：
+
+```json
+{
+  "recognition_v2": {
+    "ocr_backend": "auto",
+    "ocr_gpu_fallback": true,
+    "ocr_cache": true
+  }
+}
+```
+
+验收标准：
+
+- GPU 后端启用时，日志中的实际 Provider 为 `CUDAExecutionProvider` 或 `DmlExecutionProvider`。
+- CPU、CUDA/DirectML 对全部回放样本得到相同的状态和关键控件结果。
+- GPU 不可用时能够自动回退 CPU，完整测试仍通过。
+- 完整 OCR 回放的墙钟时间不劣于 CPU 基线 10% 以上，且进程 CPU 时间有实质下降。
+- 快速测试不初始化 OCR GPU 后端，适合频繁开发回归。
+- 性能测试结果写入机器可读 JSON，便于后续比较，不能只凭任务管理器主观判断。
+
+这项优化只能将 OCR 推理负载转移到 GPU。模板匹配、图像缩放、颜色轮廓和普通 Python 测试仍会消耗 CPU，因此 OCR 缓存和测试分层与 GPU 后端同等重要。
+
+实施状态（2026-07-28）：后端配置、Provider 实例核验、最小推理自检、GPU
+初始化/推理失败回退、共享 OCR 实例、进程内 ROI 缓存、快速/完整测试分层、
+可选依赖和机器可读基准均已实现。主环境当前仍只有 `CPUExecutionProvider`，
+`auto` 回退 CPU 已验证；隔离的 DirectML Runtime 已验证 `DmlExecutionProvider`
+可用，并通过完整真实回放与性能门槛。CUDA 仍需在具备匹配运行库的环境里复验，
+不能用 CPU 回退结果代替。
+
 ### 里程碑 5：真实环境验收
 
 1. 观察模式完整覆盖一次人工操作链路。
@@ -317,6 +374,7 @@ tests/fixtures/recognition/
 - 回放图片优先压缩，同时确保文字和按钮边缘可识别。
 - 每个里程碑完成后运行完整测试，并报告真实测试和尚未验证的部分。
 - 不以 `FakeGame` 测试通过代替真实识别验收。
+- GPU 加速必须保留 CPU 回退路径，且不得降低识别结果一致性。
 
 ## 11. 建议的首个新会话任务
 

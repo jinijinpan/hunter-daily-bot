@@ -10,6 +10,10 @@
     "min_inliers": 4
   },
   "recognition_v2": {
+    "ocr_backend": "auto",
+    "ocr_gpu_fallback": true,
+    "ocr_cache": true,
+    "ocr_cache_max_entries": 2048,
     "ocr_scale": 2.0,
     "ocr_match_threshold": 0.52,
     "stable_frames": 2,
@@ -23,11 +27,14 @@
       "action_timeout_seconds": 4.0,
       "action_hard_timeout_seconds": 12.0,
       "action_max_retries": 2,
+      "action_control_match_distance": 24.0,
       "action_target_single_frame_confidence": 0.75,
       "action_target_single_frame_confidence_by_state": {"main": 0.72},
       "min_control_confidence": 0.7
     },
     "workflow_modes": {
+      "main_tasks_claim": "v2",
+      "generic_reward": "v2",
       "main_tasks_tower": "v2",
       "main_tasks_hunter_field": "v2",
       "legacy_fallback": true
@@ -285,7 +292,7 @@
         "control_any": ["hunter_confirm"],
         "min_signals": 2
       },
-      "hunter_reward": {
+      "reward": {
         "template_any": ["reward"],
         "control_any": ["dismiss_reward"],
         "min_signals": 2
@@ -327,7 +334,7 @@
       "hunter_quick_ready": ["home", "quick_clear"],
       "hunter_failure": ["hunter_speed"],
       "hunter_confirm": ["hunter_confirm"],
-      "hunter_reward": ["dismiss_reward"]
+      "reward": ["dismiss_reward"]
     }
   },
   "page_search_margin": [20, 14],

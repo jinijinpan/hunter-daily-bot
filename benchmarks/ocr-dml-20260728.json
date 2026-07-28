@@ -1,0 +1,2832 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-07-28T23:47:51.327488+08:00",
+  "platform": "Windows-10-10.0.22621-SP0",
+  "python": "3.11.3 (tags/v3.11.3:f3909b8, Apr  4 2023, 23:49:59) [MSC v.1934 64 bit (AMD64)]",
+  "image": "C:\\分析\\hunter-daily-bot\\references\\tasks.png",
+  "roi": [
+    90,
+    170,
+    1091,
+    565
+  ],
+  "results": [
+    {
+      "backend": "cpu",
+      "runtime": {
+        "requested_backend": "cpu",
+        "active_backend": "cpu",
+        "actual_provider": "CPUExecutionProvider",
+        "session_providers": {
+          "det": [
+            "CPUExecutionProvider"
+          ],
+          "cls": [
+            "CPUExecutionProvider"
+          ],
+          "rec": [
+            "CPUExecutionProvider"
+          ]
+        },
+        "available_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "model_version": "1.4.4",
+        "gpu_fallback": true,
+        "load_error": ""
+      },
+      "initial_runtime": {
+        "requested_backend": "cpu",
+        "active_backend": "cpu",
+        "actual_provider": "CPUExecutionProvider",
+        "session_providers": {
+          "det": [
+            "CPUExecutionProvider"
+          ],
+          "cls": [
+            "CPUExecutionProvider"
+          ],
+          "rec": [
+            "CPUExecutionProvider"
+          ]
+        },
+        "available_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "model_version": "1.4.4",
+        "gpu_fallback": true,
+        "load_error": ""
+      },
+      "initialization": {
+        "wall_seconds": 1.579814400000032,
+        "cpu_seconds": 6.75
+      },
+      "warmup": {
+        "wall_seconds": 1.4368436000004294,
+        "cpu_seconds": 10.828125,
+        "tokens": [
+          {
+            "text": "登录",
+            "confidence": 0.999744,
+            "rect": [
+              95,
+              22,
+              133,
+              44
+            ]
+          },
+          {
+            "text": "1/1",
+            "confidence": 0.995775,
+            "rect": [
+              465,
+              20,
+              492,
+              39
+            ]
+          },
+          {
+            "text": "消耗150体力",
+            "confidence": 0.999348,
+            "rect": [
+              597,
+              23,
+              697,
+              43
+            ]
+          },
+          {
+            "text": "0/150",
+            "confidence": 0.998609,
+            "rect": [
+              947,
+              20,
+              993,
+              39
+            ]
+          },
+          {
+            "text": "登录1次游戏。",
+            "confidence": 0.997428,
+            "rect": [
+              97,
+              50,
+              173,
+              65
+            ]
+          },
+          {
+            "text": "领取",
+            "confidence": 0.996939,
+            "rect": [
+              402,
+              58,
+              444,
+              82
+            ]
+          },
+          {
+            "text": "消耗150体力。",
+            "confidence": 0.997857,
+            "rect": [
+              596,
+              49,
+              677,
+              66
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.999141,
+            "rect": [
+              903,
+              58,
+              944,
+              82
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999161,
+            "rect": [
+              95,
+              73,
+              126,
+              89
+            ]
+          },
+          {
+            "text": "10",
+            "confidence": 0.999186,
+            "rect": [
+              151,
+              74,
+              169,
+              87
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.98308,
+            "rect": [
+              206,
+              72,
+              243,
+              87
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999594,
+            "rect": [
+              596,
+              73,
+              626,
+              89
+            ]
+          },
+          {
+            "text": "20",
+            "confidence": 0.999266,
+            "rect": [
+              648,
+              72,
+              669,
+              87
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.986707,
+            "rect": [
+              707,
+              72,
+              744,
+              88
+            ]
+          },
+          {
+            "text": "无尽塔",
+            "confidence": 0.999928,
+            "rect": [
+              96,
+              110,
+              150,
+              130
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.99521,
+            "rect": [
+              465,
+              108,
+              492,
+              127
+            ]
+          },
+          {
+            "text": "猎人联赛",
+            "confidence": 0.99653,
+            "rect": [
+              597,
+              110,
+              668,
+              130
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.995854,
+            "rect": [
+              965,
+              108,
+              993,
+              127
+            ]
+          },
+          {
+            "text": "挑战1次无尽塔。",
+            "confidence": 0.9853,
+            "rect": [
+              97,
+              138,
+              184,
+              152
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.998714,
+            "rect": [
+              402,
+              146,
+              443,
+              168
+            ]
+          },
+          {
+            "text": "参与1次猎人联赛。",
+            "confidence": 0.98934,
+            "rect": [
+              598,
+              138,
+              697,
+              152
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.998513,
+            "rect": [
+              903,
+              145,
+              944,
+              169
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999745,
+            "rect": [
+              96,
+              160,
+              126,
+              176
+            ]
+          },
+          {
+            "text": "20",
+            "confidence": 0.99855,
+            "rect": [
+              144,
+              159,
+              169,
+              175
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.994268,
+            "rect": [
+              207,
+              160,
+              244,
+              175
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.99968,
+            "rect": [
+              597,
+              160,
+              626,
+              176
+            ]
+          },
+          {
+            "text": "20",
+            "confidence": 0.986272,
+            "rect": [
+              634,
+              159,
+              670,
+              176
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.989885,
+            "rect": [
+              707,
+              160,
+              744,
+              175
+            ]
+          },
+          {
+            "text": "天梯赛",
+            "confidence": 0.999546,
+            "rect": [
+              95,
+              198,
+              150,
+              218
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.99433,
+            "rect": [
+              465,
+              195,
+              492,
+              215
+            ]
+          },
+          {
+            "text": "深渊挑战",
+            "confidence": 0.995502,
+            "rect": [
+              597,
+              197,
+              668,
+              217
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.996077,
+            "rect": [
+              965,
+              195,
+              993,
+              215
+            ]
+          },
+          {
+            "text": "回",
+            "confidence": 0.559146,
+            "rect": [
+              49,
+              224,
+              63,
+              239
+            ]
+          },
+          {
+            "text": "参与1次天梯赛。",
+            "confidence": 0.991134,
+            "rect": [
+              97,
+              225,
+              184,
+              240
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.998911,
+            "rect": [
+              402,
+              233,
+              444,
+              257
+            ]
+          },
+          {
+            "text": "通关1次深渊。",
+            "confidence": 0.990441,
+            "rect": [
+              597,
+              225,
+              673,
+              240
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.999056,
+            "rect": [
+              903,
+              233,
+              944,
+              257
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999812,
+            "rect": [
+              95,
+              247,
+              129,
+              264
+            ]
+          },
+          {
+            "text": "15",
+            "confidence": 0.99676,
+            "rect": [
+              145,
+              247,
+              169,
+              262
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.983111,
+            "rect": [
+              206,
+              247,
+              244,
+              262
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999752,
+            "rect": [
+              597,
+              247,
+              626,
+              264
+            ]
+          },
+          {
+            "text": "15",
+            "confidence": 0.999351,
+            "rect": [
+              652,
+              248,
+              669,
+              261
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.981536,
+            "rect": [
+              706,
+              245,
+              745,
+              264
+            ]
+          },
+          {
+            "text": "魔物入侵",
+            "confidence": 0.999733,
+            "rect": [
+              97,
+              286,
+              167,
+              305
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.995246,
+            "rect": [
+              464,
+              283,
+              492,
+              302
+            ]
+          },
+          {
+            "text": "猎魔战场",
+            "confidence": 0.996703,
+            "rect": [
+              597,
+              285,
+              667,
+              305
+            ]
+          },
+          {
+            "text": "0/3",
+            "confidence": 0.99651,
+            "rect": [
+              965,
+              283,
+              993,
+              302
+            ]
+          },
+          {
+            "text": "参与1次魔物入侵。",
+            "confidence": 0.992368,
+            "rect": [
+              97,
+              313,
+              197,
+              327
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.998922,
+            "rect": [
+              402,
+              320,
+              444,
+              344
+            ]
+          },
+          {
+            "text": "通关3次猎魔战场。",
+            "confidence": 0.993274,
+            "rect": [
+              598,
+              313,
+              698,
+              327
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.999299,
+            "rect": [
+              903,
+              320,
+              944,
+              344
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999182,
+            "rect": [
+              95,
+              335,
+              129,
+              351
+            ]
+          },
+          {
+            "text": "15",
+            "confidence": 0.998173,
+            "rect": [
+              145,
+              335,
+              169,
+              349
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.980417,
+            "rect": [
+              205,
+              333,
+              244,
+              351
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.99972,
+            "rect": [
+              596,
+              335,
+              626,
+              351
+            ]
+          },
+          {
+            "text": "15",
+            "confidence": 0.998136,
+            "rect": [
+              646,
+              335,
+              670,
+              349
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.979048,
+            "rect": [
+              705,
+              333,
+              745,
+              351
+            ]
+          }
+        ]
+      },
+      "measurement": {
+        "iterations": 3,
+        "wall_seconds": 1.966705599996203,
+        "cpu_seconds": 15.265625,
+        "wall_seconds_per_iteration": 0.6555685333320677,
+        "cpu_seconds_per_iteration": 5.088541666666667,
+        "tokens": [
+          {
+            "text": "登录",
+            "confidence": 0.999744,
+            "rect": [
+              95,
+              22,
+              133,
+              44
+            ]
+          },
+          {
+            "text": "1/1",
+            "confidence": 0.995775,
+            "rect": [
+              465,
+              20,
+              492,
+              39
+            ]
+          },
+          {
+            "text": "消耗150体力",
+            "confidence": 0.999348,
+            "rect": [
+              597,
+              23,
+              697,
+              43
+            ]
+          },
+          {
+            "text": "0/150",
+            "confidence": 0.998609,
+            "rect": [
+              947,
+              20,
+              993,
+              39
+            ]
+          },
+          {
+            "text": "登录1次游戏。",
+            "confidence": 0.997428,
+            "rect": [
+              97,
+              50,
+              173,
+              65
+            ]
+          },
+          {
+            "text": "领取",
+            "confidence": 0.996939,
+            "rect": [
+              402,
+              58,
+              444,
+              82
+            ]
+          },
+          {
+            "text": "消耗150体力。",
+            "confidence": 0.997857,
+            "rect": [
+              596,
+              49,
+              677,
+              66
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.999141,
+            "rect": [
+              903,
+              58,
+              944,
+              82
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999161,
+            "rect": [
+              95,
+              73,
+              126,
+              89
+            ]
+          },
+          {
+            "text": "10",
+            "confidence": 0.999186,
+            "rect": [
+              151,
+              74,
+              169,
+              87
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.98308,
+            "rect": [
+              206,
+              72,
+              243,
+              87
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999594,
+            "rect": [
+              596,
+              73,
+              626,
+              89
+            ]
+          },
+          {
+            "text": "20",
+            "confidence": 0.999266,
+            "rect": [
+              648,
+              72,
+              669,
+              87
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.986707,
+            "rect": [
+              707,
+              72,
+              744,
+              88
+            ]
+          },
+          {
+            "text": "无尽塔",
+            "confidence": 0.999928,
+            "rect": [
+              96,
+              110,
+              150,
+              130
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.99521,
+            "rect": [
+              465,
+              108,
+              492,
+              127
+            ]
+          },
+          {
+            "text": "猎人联赛",
+            "confidence": 0.99653,
+            "rect": [
+              597,
+              110,
+              668,
+              130
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.995854,
+            "rect": [
+              965,
+              108,
+              993,
+              127
+            ]
+          },
+          {
+            "text": "挑战1次无尽塔。",
+            "confidence": 0.9853,
+            "rect": [
+              97,
+              138,
+              184,
+              152
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.998714,
+            "rect": [
+              402,
+              146,
+              443,
+              168
+            ]
+          },
+          {
+            "text": "参与1次猎人联赛。",
+            "confidence": 0.98934,
+            "rect": [
+              598,
+              138,
+              697,
+              152
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.998513,
+            "rect": [
+              903,
+              145,
+              944,
+              169
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999745,
+            "rect": [
+              96,
+              160,
+              126,
+              176
+            ]
+          },
+          {
+            "text": "20",
+            "confidence": 0.99855,
+            "rect": [
+              144,
+              159,
+              169,
+              175
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.994268,
+            "rect": [
+              207,
+              160,
+              244,
+              175
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.99968,
+            "rect": [
+              597,
+              160,
+              626,
+              176
+            ]
+          },
+          {
+            "text": "20",
+            "confidence": 0.986272,
+            "rect": [
+              634,
+              159,
+              670,
+              176
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.989885,
+            "rect": [
+              707,
+              160,
+              744,
+              175
+            ]
+          },
+          {
+            "text": "天梯赛",
+            "confidence": 0.999546,
+            "rect": [
+              95,
+              198,
+              150,
+              218
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.99433,
+            "rect": [
+              465,
+              195,
+              492,
+              215
+            ]
+          },
+          {
+            "text": "深渊挑战",
+            "confidence": 0.995502,
+            "rect": [
+              597,
+              197,
+              668,
+              217
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.996077,
+            "rect": [
+              965,
+              195,
+              993,
+              215
+            ]
+          },
+          {
+            "text": "回",
+            "confidence": 0.559146,
+            "rect": [
+              49,
+              224,
+              63,
+              239
+            ]
+          },
+          {
+            "text": "参与1次天梯赛。",
+            "confidence": 0.991134,
+            "rect": [
+              97,
+              225,
+              184,
+              240
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.998911,
+            "rect": [
+              402,
+              233,
+              444,
+              257
+            ]
+          },
+          {
+            "text": "通关1次深渊。",
+            "confidence": 0.990441,
+            "rect": [
+              597,
+              225,
+              673,
+              240
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.999056,
+            "rect": [
+              903,
+              233,
+              944,
+              257
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999812,
+            "rect": [
+              95,
+              247,
+              129,
+              264
+            ]
+          },
+          {
+            "text": "15",
+            "confidence": 0.99676,
+            "rect": [
+              145,
+              247,
+              169,
+              262
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.983111,
+            "rect": [
+              206,
+              247,
+              244,
+              262
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999752,
+            "rect": [
+              597,
+              247,
+              626,
+              264
+            ]
+          },
+          {
+            "text": "15",
+            "confidence": 0.999351,
+            "rect": [
+              652,
+              248,
+              669,
+              261
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.981536,
+            "rect": [
+              706,
+              245,
+              745,
+              264
+            ]
+          },
+          {
+            "text": "魔物入侵",
+            "confidence": 0.999733,
+            "rect": [
+              97,
+              286,
+              167,
+              305
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.995246,
+            "rect": [
+              464,
+              283,
+              492,
+              302
+            ]
+          },
+          {
+            "text": "猎魔战场",
+            "confidence": 0.996703,
+            "rect": [
+              597,
+              285,
+              667,
+              305
+            ]
+          },
+          {
+            "text": "0/3",
+            "confidence": 0.99651,
+            "rect": [
+              965,
+              283,
+              993,
+              302
+            ]
+          },
+          {
+            "text": "参与1次魔物入侵。",
+            "confidence": 0.992368,
+            "rect": [
+              97,
+              313,
+              197,
+              327
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.998922,
+            "rect": [
+              402,
+              320,
+              444,
+              344
+            ]
+          },
+          {
+            "text": "通关3次猎魔战场。",
+            "confidence": 0.993274,
+            "rect": [
+              598,
+              313,
+              698,
+              327
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.999299,
+            "rect": [
+              903,
+              320,
+              944,
+              344
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999182,
+            "rect": [
+              95,
+              335,
+              129,
+              351
+            ]
+          },
+          {
+            "text": "15",
+            "confidence": 0.998173,
+            "rect": [
+              145,
+              335,
+              169,
+              349
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.980417,
+            "rect": [
+              205,
+              333,
+              244,
+              351
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.99972,
+            "rect": [
+              596,
+              335,
+              626,
+              351
+            ]
+          },
+          {
+            "text": "15",
+            "confidence": 0.998136,
+            "rect": [
+              646,
+              335,
+              670,
+              349
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.979048,
+            "rect": [
+              705,
+              333,
+              745,
+              351
+            ]
+          }
+        ]
+      },
+      "replay_signature": [
+        {
+          "file": "tasks-completed.webp",
+          "state": "tasks",
+          "controls": [
+            "claim",
+            "go"
+          ],
+          "control_counts": {
+            "claim": 4,
+            "go": 4
+          }
+        },
+        {
+          "file": "tasks-claim-current.webp",
+          "state": "tasks",
+          "controls": [
+            "claim",
+            "go",
+            "home"
+          ],
+          "control_counts": {
+            "claim": 5,
+            "go": 3,
+            "home": 1
+          }
+        },
+        {
+          "file": "tower-ready.webp",
+          "state": "tower_ready",
+          "controls": [
+            "quick_challenge",
+            "start_challenge"
+          ],
+          "control_counts": {
+            "quick_challenge": 1,
+            "start_challenge": 1
+          }
+        },
+        {
+          "file": "abyss-exhausted.webp",
+          "state": "abyss_exhausted",
+          "controls": [
+            "return_safe"
+          ],
+          "control_counts": {
+            "return_safe": 1
+          }
+        },
+        {
+          "file": "monster-stage.webp",
+          "state": "monster_stage",
+          "controls": [
+            "challenge",
+            "home"
+          ],
+          "control_counts": {
+            "challenge": 1,
+            "home": 1
+          }
+        },
+        {
+          "file": "hunter-disabled.webp",
+          "state": "hunter_field",
+          "controls": [
+            "home",
+            "quick_disabled"
+          ],
+          "control_counts": {
+            "home": 1,
+            "quick_disabled": 1
+          }
+        },
+        {
+          "file": "loading.webp",
+          "state": "loading",
+          "controls": [],
+          "control_counts": {}
+        },
+        {
+          "file": "tower-calculating.webp",
+          "state": "loading",
+          "controls": [],
+          "control_counts": {}
+        },
+        {
+          "file": "tower-result-failure.webp",
+          "state": "tower_result",
+          "controls": [
+            "dismiss_result"
+          ],
+          "control_counts": {
+            "dismiss_result": 1
+          }
+        },
+        {
+          "file": "main.webp",
+          "state": "main",
+          "controls": [
+            "secretary"
+          ],
+          "control_counts": {
+            "secretary": 1
+          }
+        },
+        {
+          "file": "dismissible-overlay.webp",
+          "state": "dismissible_overlay",
+          "controls": [
+            "dismiss_overlay"
+          ],
+          "control_counts": {
+            "dismiss_overlay": 1
+          }
+        },
+        {
+          "file": "main-current.webp",
+          "state": "main",
+          "controls": [
+            "secretary"
+          ],
+          "control_counts": {
+            "secretary": 1
+          }
+        },
+        {
+          "file": "hunter-ready.webp",
+          "state": "hunter_field",
+          "controls": [
+            "home",
+            "hunter_start"
+          ],
+          "control_counts": {
+            "home": 1,
+            "hunter_start": 1
+          }
+        },
+        {
+          "file": "hunter-quick-ready.webp",
+          "state": "hunter_quick_ready",
+          "controls": [
+            "home",
+            "quick_clear"
+          ],
+          "control_counts": {
+            "home": 1,
+            "quick_clear": 2
+          }
+        },
+        {
+          "file": "hunter-failure.webp",
+          "state": "hunter_failure",
+          "controls": [
+            "hunter_speed"
+          ],
+          "control_counts": {
+            "hunter_speed": 1
+          }
+        },
+        {
+          "file": "hunter-confirm.webp",
+          "state": "hunter_confirm",
+          "controls": [
+            "hunter_confirm"
+          ],
+          "control_counts": {
+            "hunter_confirm": 1
+          }
+        },
+        {
+          "file": "hunter-reward.webp",
+          "state": "reward",
+          "controls": [
+            "dismiss_reward"
+          ],
+          "control_counts": {
+            "dismiss_reward": 1
+          }
+        },
+        {
+          "file": "hunter-quick-current.webp",
+          "state": "hunter_quick_ready",
+          "controls": [
+            "home",
+            "quick_clear"
+          ],
+          "control_counts": {
+            "home": 1,
+            "quick_clear": 2
+          }
+        }
+      ]
+    },
+    {
+      "backend": "dml",
+      "runtime": {
+        "requested_backend": "dml",
+        "active_backend": "dml",
+        "actual_provider": "DmlExecutionProvider",
+        "session_providers": {
+          "det": [
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "cls": [
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "rec": [
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        },
+        "available_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "model_version": "1.4.4",
+        "gpu_fallback": true,
+        "load_error": ""
+      },
+      "initial_runtime": {
+        "requested_backend": "dml",
+        "active_backend": "dml",
+        "actual_provider": "DmlExecutionProvider",
+        "session_providers": {
+          "det": [
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "cls": [
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "rec": [
+            "DmlExecutionProvider",
+            "CPUExecutionProvider"
+          ]
+        },
+        "available_providers": [
+          "DmlExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "model_version": "1.4.4",
+        "gpu_fallback": true,
+        "load_error": ""
+      },
+      "initialization": {
+        "wall_seconds": 1.9825932000021567,
+        "cpu_seconds": 2.296875
+      },
+      "warmup": {
+        "wall_seconds": 1.1026257000048645,
+        "cpu_seconds": 1.203125,
+        "tokens": [
+          {
+            "text": "登录",
+            "confidence": 0.999744,
+            "rect": [
+              95,
+              22,
+              133,
+              44
+            ]
+          },
+          {
+            "text": "1/1",
+            "confidence": 0.995773,
+            "rect": [
+              465,
+              20,
+              492,
+              39
+            ]
+          },
+          {
+            "text": "消耗150体力",
+            "confidence": 0.999347,
+            "rect": [
+              597,
+              23,
+              697,
+              43
+            ]
+          },
+          {
+            "text": "0/150",
+            "confidence": 0.998608,
+            "rect": [
+              947,
+              20,
+              993,
+              39
+            ]
+          },
+          {
+            "text": "登录1次游戏。",
+            "confidence": 0.997427,
+            "rect": [
+              97,
+              50,
+              173,
+              65
+            ]
+          },
+          {
+            "text": "领取",
+            "confidence": 0.996938,
+            "rect": [
+              402,
+              58,
+              444,
+              82
+            ]
+          },
+          {
+            "text": "消耗150体力。",
+            "confidence": 0.997857,
+            "rect": [
+              596,
+              49,
+              677,
+              66
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.999141,
+            "rect": [
+              903,
+              58,
+              944,
+              82
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.99916,
+            "rect": [
+              95,
+              73,
+              126,
+              89
+            ]
+          },
+          {
+            "text": "10",
+            "confidence": 0.999185,
+            "rect": [
+              151,
+              74,
+              169,
+              87
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.983077,
+            "rect": [
+              206,
+              72,
+              243,
+              87
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999594,
+            "rect": [
+              596,
+              73,
+              626,
+              89
+            ]
+          },
+          {
+            "text": "20",
+            "confidence": 0.999265,
+            "rect": [
+              648,
+              72,
+              669,
+              87
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.986704,
+            "rect": [
+              707,
+              72,
+              744,
+              88
+            ]
+          },
+          {
+            "text": "无尽塔",
+            "confidence": 0.999928,
+            "rect": [
+              96,
+              110,
+              150,
+              130
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.995208,
+            "rect": [
+              465,
+              108,
+              492,
+              127
+            ]
+          },
+          {
+            "text": "猎人联赛",
+            "confidence": 0.99653,
+            "rect": [
+              597,
+              110,
+              668,
+              130
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.995852,
+            "rect": [
+              965,
+              108,
+              993,
+              127
+            ]
+          },
+          {
+            "text": "挑战1次无尽塔。",
+            "confidence": 0.985299,
+            "rect": [
+              97,
+              138,
+              184,
+              152
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.998713,
+            "rect": [
+              402,
+              146,
+              443,
+              168
+            ]
+          },
+          {
+            "text": "参与1次猎人联赛。",
+            "confidence": 0.989339,
+            "rect": [
+              598,
+              138,
+              697,
+              152
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.998512,
+            "rect": [
+              903,
+              145,
+              944,
+              169
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999745,
+            "rect": [
+              96,
+              160,
+              126,
+              176
+            ]
+          },
+          {
+            "text": "20",
+            "confidence": 0.998548,
+            "rect": [
+              144,
+              159,
+              169,
+              175
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.994266,
+            "rect": [
+              207,
+              160,
+              244,
+              175
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.99968,
+            "rect": [
+              597,
+              160,
+              626,
+              176
+            ]
+          },
+          {
+            "text": "20",
+            "confidence": 0.986269,
+            "rect": [
+              634,
+              159,
+              670,
+              176
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.989882,
+            "rect": [
+              707,
+              160,
+              744,
+              175
+            ]
+          },
+          {
+            "text": "天梯赛",
+            "confidence": 0.999546,
+            "rect": [
+              95,
+              198,
+              150,
+              218
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.994328,
+            "rect": [
+              465,
+              195,
+              492,
+              215
+            ]
+          },
+          {
+            "text": "深渊挑战",
+            "confidence": 0.995501,
+            "rect": [
+              597,
+              197,
+              668,
+              217
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.996076,
+            "rect": [
+              965,
+              195,
+              993,
+              215
+            ]
+          },
+          {
+            "text": "回",
+            "confidence": 0.559159,
+            "rect": [
+              49,
+              224,
+              63,
+              239
+            ]
+          },
+          {
+            "text": "参与1次天梯赛。",
+            "confidence": 0.991133,
+            "rect": [
+              97,
+              225,
+              184,
+              240
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.998911,
+            "rect": [
+              402,
+              233,
+              444,
+              257
+            ]
+          },
+          {
+            "text": "通关1次深渊。",
+            "confidence": 0.99044,
+            "rect": [
+              597,
+              225,
+              673,
+              240
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.999056,
+            "rect": [
+              903,
+              233,
+              944,
+              257
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999812,
+            "rect": [
+              95,
+              247,
+              129,
+              264
+            ]
+          },
+          {
+            "text": "15",
+            "confidence": 0.996757,
+            "rect": [
+              145,
+              247,
+              169,
+              262
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.983108,
+            "rect": [
+              206,
+              247,
+              244,
+              262
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999752,
+            "rect": [
+              597,
+              247,
+              626,
+              264
+            ]
+          },
+          {
+            "text": "15",
+            "confidence": 0.999349,
+            "rect": [
+              652,
+              248,
+              669,
+              261
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.981534,
+            "rect": [
+              706,
+              245,
+              745,
+              264
+            ]
+          },
+          {
+            "text": "魔物入侵",
+            "confidence": 0.999733,
+            "rect": [
+              97,
+              286,
+              167,
+              305
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.995244,
+            "rect": [
+              464,
+              283,
+              492,
+              302
+            ]
+          },
+          {
+            "text": "猎魔战场",
+            "confidence": 0.996703,
+            "rect": [
+              597,
+              285,
+              667,
+              305
+            ]
+          },
+          {
+            "text": "0/3",
+            "confidence": 0.996509,
+            "rect": [
+              965,
+              283,
+              993,
+              302
+            ]
+          },
+          {
+            "text": "参与1次魔物入侵。",
+            "confidence": 0.992367,
+            "rect": [
+              97,
+              313,
+              197,
+              327
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.998922,
+            "rect": [
+              402,
+              320,
+              444,
+              344
+            ]
+          },
+          {
+            "text": "通关3次猎魔战场。",
+            "confidence": 0.993273,
+            "rect": [
+              598,
+              313,
+              698,
+              327
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.999299,
+            "rect": [
+              903,
+              320,
+              944,
+              344
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999182,
+            "rect": [
+              95,
+              335,
+              129,
+              351
+            ]
+          },
+          {
+            "text": "15",
+            "confidence": 0.99817,
+            "rect": [
+              145,
+              335,
+              169,
+              349
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.980414,
+            "rect": [
+              205,
+              333,
+              244,
+              351
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.99972,
+            "rect": [
+              596,
+              335,
+              626,
+              351
+            ]
+          },
+          {
+            "text": "15",
+            "confidence": 0.998133,
+            "rect": [
+              646,
+              335,
+              670,
+              349
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.979045,
+            "rect": [
+              705,
+              333,
+              745,
+              351
+            ]
+          }
+        ]
+      },
+      "measurement": {
+        "iterations": 3,
+        "wall_seconds": 1.046260400005849,
+        "cpu_seconds": 1.046875,
+        "wall_seconds_per_iteration": 0.34875346666861634,
+        "cpu_seconds_per_iteration": 0.3489583333333333,
+        "tokens": [
+          {
+            "text": "登录",
+            "confidence": 0.999744,
+            "rect": [
+              95,
+              22,
+              133,
+              44
+            ]
+          },
+          {
+            "text": "1/1",
+            "confidence": 0.995773,
+            "rect": [
+              465,
+              20,
+              492,
+              39
+            ]
+          },
+          {
+            "text": "消耗150体力",
+            "confidence": 0.999347,
+            "rect": [
+              597,
+              23,
+              697,
+              43
+            ]
+          },
+          {
+            "text": "0/150",
+            "confidence": 0.998608,
+            "rect": [
+              947,
+              20,
+              993,
+              39
+            ]
+          },
+          {
+            "text": "登录1次游戏。",
+            "confidence": 0.997427,
+            "rect": [
+              97,
+              50,
+              173,
+              65
+            ]
+          },
+          {
+            "text": "领取",
+            "confidence": 0.996938,
+            "rect": [
+              402,
+              58,
+              444,
+              82
+            ]
+          },
+          {
+            "text": "消耗150体力。",
+            "confidence": 0.997857,
+            "rect": [
+              596,
+              49,
+              677,
+              66
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.999141,
+            "rect": [
+              903,
+              58,
+              944,
+              82
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.99916,
+            "rect": [
+              95,
+              73,
+              126,
+              89
+            ]
+          },
+          {
+            "text": "10",
+            "confidence": 0.999185,
+            "rect": [
+              151,
+              74,
+              169,
+              87
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.983077,
+            "rect": [
+              206,
+              72,
+              243,
+              87
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999594,
+            "rect": [
+              596,
+              73,
+              626,
+              89
+            ]
+          },
+          {
+            "text": "20",
+            "confidence": 0.999265,
+            "rect": [
+              648,
+              72,
+              669,
+              87
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.986704,
+            "rect": [
+              707,
+              72,
+              744,
+              88
+            ]
+          },
+          {
+            "text": "无尽塔",
+            "confidence": 0.999928,
+            "rect": [
+              96,
+              110,
+              150,
+              130
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.995208,
+            "rect": [
+              465,
+              108,
+              492,
+              127
+            ]
+          },
+          {
+            "text": "猎人联赛",
+            "confidence": 0.99653,
+            "rect": [
+              597,
+              110,
+              668,
+              130
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.995852,
+            "rect": [
+              965,
+              108,
+              993,
+              127
+            ]
+          },
+          {
+            "text": "挑战1次无尽塔。",
+            "confidence": 0.985299,
+            "rect": [
+              97,
+              138,
+              184,
+              152
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.998713,
+            "rect": [
+              402,
+              146,
+              443,
+              168
+            ]
+          },
+          {
+            "text": "参与1次猎人联赛。",
+            "confidence": 0.989339,
+            "rect": [
+              598,
+              138,
+              697,
+              152
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.998512,
+            "rect": [
+              903,
+              145,
+              944,
+              169
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999745,
+            "rect": [
+              96,
+              160,
+              126,
+              176
+            ]
+          },
+          {
+            "text": "20",
+            "confidence": 0.998548,
+            "rect": [
+              144,
+              159,
+              169,
+              175
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.994266,
+            "rect": [
+              207,
+              160,
+              244,
+              175
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.99968,
+            "rect": [
+              597,
+              160,
+              626,
+              176
+            ]
+          },
+          {
+            "text": "20",
+            "confidence": 0.986269,
+            "rect": [
+              634,
+              159,
+              670,
+              176
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.989882,
+            "rect": [
+              707,
+              160,
+              744,
+              175
+            ]
+          },
+          {
+            "text": "天梯赛",
+            "confidence": 0.999546,
+            "rect": [
+              95,
+              198,
+              150,
+              218
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.994328,
+            "rect": [
+              465,
+              195,
+              492,
+              215
+            ]
+          },
+          {
+            "text": "深渊挑战",
+            "confidence": 0.995501,
+            "rect": [
+              597,
+              197,
+              668,
+              217
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.996076,
+            "rect": [
+              965,
+              195,
+              993,
+              215
+            ]
+          },
+          {
+            "text": "回",
+            "confidence": 0.559159,
+            "rect": [
+              49,
+              224,
+              63,
+              239
+            ]
+          },
+          {
+            "text": "参与1次天梯赛。",
+            "confidence": 0.991133,
+            "rect": [
+              97,
+              225,
+              184,
+              240
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.998911,
+            "rect": [
+              402,
+              233,
+              444,
+              257
+            ]
+          },
+          {
+            "text": "通关1次深渊。",
+            "confidence": 0.99044,
+            "rect": [
+              597,
+              225,
+              673,
+              240
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.999056,
+            "rect": [
+              903,
+              233,
+              944,
+              257
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999812,
+            "rect": [
+              95,
+              247,
+              129,
+              264
+            ]
+          },
+          {
+            "text": "15",
+            "confidence": 0.996757,
+            "rect": [
+              145,
+              247,
+              169,
+              262
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.983108,
+            "rect": [
+              206,
+              247,
+              244,
+              262
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999752,
+            "rect": [
+              597,
+              247,
+              626,
+              264
+            ]
+          },
+          {
+            "text": "15",
+            "confidence": 0.999349,
+            "rect": [
+              652,
+              248,
+              669,
+              261
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.981534,
+            "rect": [
+              706,
+              245,
+              745,
+              264
+            ]
+          },
+          {
+            "text": "魔物入侵",
+            "confidence": 0.999733,
+            "rect": [
+              97,
+              286,
+              167,
+              305
+            ]
+          },
+          {
+            "text": "0/1",
+            "confidence": 0.995244,
+            "rect": [
+              464,
+              283,
+              492,
+              302
+            ]
+          },
+          {
+            "text": "猎魔战场",
+            "confidence": 0.996703,
+            "rect": [
+              597,
+              285,
+              667,
+              305
+            ]
+          },
+          {
+            "text": "0/3",
+            "confidence": 0.996509,
+            "rect": [
+              965,
+              283,
+              993,
+              302
+            ]
+          },
+          {
+            "text": "参与1次魔物入侵。",
+            "confidence": 0.992367,
+            "rect": [
+              97,
+              313,
+              197,
+              327
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.998922,
+            "rect": [
+              402,
+              320,
+              444,
+              344
+            ]
+          },
+          {
+            "text": "通关3次猎魔战场。",
+            "confidence": 0.993273,
+            "rect": [
+              598,
+              313,
+              698,
+              327
+            ]
+          },
+          {
+            "text": "前往",
+            "confidence": 0.999299,
+            "rect": [
+              903,
+              320,
+              944,
+              344
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.999182,
+            "rect": [
+              95,
+              335,
+              129,
+              351
+            ]
+          },
+          {
+            "text": "15",
+            "confidence": 0.99817,
+            "rect": [
+              145,
+              335,
+              169,
+              349
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.980414,
+            "rect": [
+              205,
+              333,
+              244,
+              351
+            ]
+          },
+          {
+            "text": "奖励",
+            "confidence": 0.99972,
+            "rect": [
+              596,
+              335,
+              626,
+              351
+            ]
+          },
+          {
+            "text": "15",
+            "confidence": 0.998133,
+            "rect": [
+              646,
+              335,
+              670,
+              349
+            ]
+          },
+          {
+            "text": "1,000",
+            "confidence": 0.979045,
+            "rect": [
+              705,
+              333,
+              745,
+              351
+            ]
+          }
+        ]
+      },
+      "replay_signature": [
+        {
+          "file": "tasks-completed.webp",
+          "state": "tasks",
+          "controls": [
+            "claim",
+            "go"
+          ],
+          "control_counts": {
+            "claim": 4,
+            "go": 4
+          }
+        },
+        {
+          "file": "tasks-claim-current.webp",
+          "state": "tasks",
+          "controls": [
+            "claim",
+            "go",
+            "home"
+          ],
+          "control_counts": {
+            "claim": 5,
+            "go": 3,
+            "home": 1
+          }
+        },
+        {
+          "file": "tower-ready.webp",
+          "state": "tower_ready",
+          "controls": [
+            "quick_challenge",
+            "start_challenge"
+          ],
+          "control_counts": {
+            "quick_challenge": 1,
+            "start_challenge": 1
+          }
+        },
+        {
+          "file": "abyss-exhausted.webp",
+          "state": "abyss_exhausted",
+          "controls": [
+            "return_safe"
+          ],
+          "control_counts": {
+            "return_safe": 1
+          }
+        },
+        {
+          "file": "monster-stage.webp",
+          "state": "monster_stage",
+          "controls": [
+            "challenge",
+            "home"
+          ],
+          "control_counts": {
+            "challenge": 1,
+            "home": 1
+          }
+        },
+        {
+          "file": "hunter-disabled.webp",
+          "state": "hunter_field",
+          "controls": [
+            "home",
+            "quick_disabled"
+          ],
+          "control_counts": {
+            "home": 1,
+            "quick_disabled": 1
+          }
+        },
+        {
+          "file": "loading.webp",
+          "state": "loading",
+          "controls": [],
+          "control_counts": {}
+        },
+        {
+          "file": "tower-calculating.webp",
+          "state": "loading",
+          "controls": [],
+          "control_counts": {}
+        },
+        {
+          "file": "tower-result-failure.webp",
+          "state": "tower_result",
+          "controls": [
+            "dismiss_result"
+          ],
+          "control_counts": {
+            "dismiss_result": 1
+          }
+        },
+        {
+          "file": "main.webp",
+          "state": "main",
+          "controls": [
+            "secretary"
+          ],
+          "control_counts": {
+            "secretary": 1
+          }
+        },
+        {
+          "file": "dismissible-overlay.webp",
+          "state": "dismissible_overlay",
+          "controls": [
+            "dismiss_overlay"
+          ],
+          "control_counts": {
+            "dismiss_overlay": 1
+          }
+        },
+        {
+          "file": "main-current.webp",
+          "state": "main",
+          "controls": [
+            "secretary"
+          ],
+          "control_counts": {
+            "secretary": 1
+          }
+        },
+        {
+          "file": "hunter-ready.webp",
+          "state": "hunter_field",
+          "controls": [
+            "home",
+            "hunter_start"
+          ],
+          "control_counts": {
+            "home": 1,
+            "hunter_start": 1
+          }
+        },
+        {
+          "file": "hunter-quick-ready.webp",
+          "state": "hunter_quick_ready",
+          "controls": [
+            "home",
+            "quick_clear"
+          ],
+          "control_counts": {
+            "home": 1,
+            "quick_clear": 2
+          }
+        },
+        {
+          "file": "hunter-failure.webp",
+          "state": "hunter_failure",
+          "controls": [
+            "hunter_speed"
+          ],
+          "control_counts": {
+            "hunter_speed": 1
+          }
+        },
+        {
+          "file": "hunter-confirm.webp",
+          "state": "hunter_confirm",
+          "controls": [
+            "hunter_confirm"
+          ],
+          "control_counts": {
+            "hunter_confirm": 1
+          }
+        },
+        {
+          "file": "hunter-reward.webp",
+          "state": "reward",
+          "controls": [
+            "dismiss_reward"
+          ],
+          "control_counts": {
+            "dismiss_reward": 1
+          }
+        },
+        {
+          "file": "hunter-quick-current.webp",
+          "state": "hunter_quick_ready",
+          "controls": [
+            "home",
+            "quick_clear"
+          ],
+          "control_counts": {
+            "home": 1,
+            "quick_clear": 2
+          }
+        }
+      ]
+    }
+  ],
+  "comparisons": [
+    {
+      "backend": "dml",
+      "active_backend": "dml",
+      "same_tokens": false,
+      "same_replay_signature": true,
+      "wall_ratio_to_cpu": 0.5319862820382821,
+      "cpu_ratio_to_cpu": 0.06857727737973388,
+      "passes_performance_gate": true
+    }
+  ]
+}

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import importlib.metadata
 import logging
 import math
+import os
 import re
+import threading
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from dataclasses import asdict, dataclass, field
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -46,6 +50,13 @@ class OCRToken:
     text: str
     confidence: float
     rect: tuple[int, int, int, int]
+
+
+_OCR_CACHE_LOCK = threading.RLock()
+_OCR_RESULT_CACHE: OrderedDict[tuple[Any, ...], tuple[OCRToken, ...]] = OrderedDict()
+_OCR_CACHE_HITS = 0
+_OCR_CACHE_MISSES = 0
+_SHARED_OCR_ENGINES: dict[tuple[Any, ...], "LocalOCR"] = {}
 
 
 @dataclass(frozen=True)
@@ -228,10 +239,90 @@ def frame_difference(previous: Any | None, current: Any, cv2: Any) -> float:
 class LocalOCR:
     """Lazy RapidOCR adapter; only configured small ROIs are submitted."""
 
-    def __init__(self, engine: Any | None = None):
+    BACKEND_PROVIDERS = {
+        "cpu": "CPUExecutionProvider",
+        "cuda": "CUDAExecutionProvider",
+        "dml": "DmlExecutionProvider",
+    }
+
+    def __init__(
+        self,
+        config: dict[str, Any] | None = None,
+        engine: Any | None = None,
+        *,
+        engine_factory: Callable[..., Any] | None = None,
+        available_providers: Iterable[str] | None = None,
+        np_module: Any | None = None,
+    ):
+        settings = (config or {}).get("recognition_v2", config or {})
+        configured_backend = str(settings.get("ocr_backend", "auto")).lower()
+        self.requested_backend = os.environ.get(
+            "HUNTER_OCR_BACKEND", configured_backend
+        ).lower()
+        if self.requested_backend not in {"auto", "cpu", "cuda", "dml"}:
+            raise ValueError(
+                "recognition_v2.ocr_backend 必须是 auto、cpu、cuda 或 dml，"
+                f"当前为 {self.requested_backend!r}。"
+            )
+        self.gpu_fallback = bool(settings.get("ocr_gpu_fallback", True))
+        self._engine_factory = engine_factory
+        self._available_providers_override = (
+            tuple(map(str, available_providers))
+            if available_providers is not None
+            else None
+        )
+        self._np = np_module
         self._engine = engine
         self._load_attempted = engine is not None
         self._warned = False
+        self._fallback_warned = False
+        self.active_backend = "injected" if engine is not None else "uninitialized"
+        self.actual_providers: dict[str, tuple[str, ...]] = {}
+        self.load_error = ""
+        try:
+            self.model_version = importlib.metadata.version("rapidocr-onnxruntime")
+        except importlib.metadata.PackageNotFoundError:
+            self.model_version = "unavailable"
+        if engine is not None:
+            self.actual_providers = self._engine_providers(engine)
+
+    @property
+    def available_providers(self) -> tuple[str, ...]:
+        if self._available_providers_override is not None:
+            return self._available_providers_override
+        try:
+            import onnxruntime as ort
+
+            return tuple(map(str, ort.get_available_providers()))
+        except ImportError:
+            return ()
+
+    @property
+    def actual_provider(self) -> str:
+        primaries = [providers[0] for providers in self.actual_providers.values() if providers]
+        if not primaries:
+            return "unavailable"
+        return primaries[0] if len(set(primaries)) == 1 else ",".join(primaries)
+
+    @property
+    def cache_identity(self) -> tuple[str, str, str]:
+        return (self.requested_backend, self.active_backend, self.model_version)
+
+    def runtime_info(self) -> dict[str, Any]:
+        self._load()
+        return {
+            "requested_backend": self.requested_backend,
+            "active_backend": self.active_backend,
+            "actual_provider": self.actual_provider,
+            "session_providers": {
+                name: list(providers)
+                for name, providers in self.actual_providers.items()
+            },
+            "available_providers": list(self.available_providers),
+            "model_version": self.model_version,
+            "gpu_fallback": self.gpu_fallback,
+            "load_error": self.load_error,
+        }
 
     @property
     def available(self) -> bool:
@@ -243,11 +334,120 @@ class LocalOCR:
             return
         self._load_attempted = True
         try:
-            from rapidocr_onnxruntime import RapidOCR
+            if self._engine_factory is None:
+                from rapidocr_onnxruntime import RapidOCR
 
-            self._engine = RapidOCR()
-        except ImportError:
+                self._engine_factory = RapidOCR
+            candidates = self._backend_candidates()
+            failures = []
+            for backend in candidates:
+                try:
+                    self._initialize_backend(backend)
+                    return
+                except Exception as exc:
+                    failures.append(f"{backend}: {exc}")
+                    logging.warning("OCR 后端 %s 初始化/自检失败：%s", backend, exc)
+            self.load_error = "; ".join(failures)
+            if self.requested_backend != "auto" and not self.gpu_fallback:
+                raise RuntimeError(self.load_error)
             self._engine = None
+            self.active_backend = "unavailable"
+        except ImportError as exc:
+            self._engine = None
+            self.active_backend = "unavailable"
+            self.load_error = str(exc)
+
+    def _backend_candidates(self) -> list[str]:
+        providers = set(self.available_providers)
+        if self.requested_backend == "auto":
+            candidates = [
+                backend
+                for backend in ("cuda", "dml")
+                if self.BACKEND_PROVIDERS[backend] in providers
+            ]
+            candidates.append("cpu")
+            return candidates
+        expected = self.BACKEND_PROVIDERS[self.requested_backend]
+        if self.requested_backend == "cpu" or expected in providers:
+            candidates = [self.requested_backend]
+            if self.requested_backend != "cpu" and self.gpu_fallback:
+                candidates.append("cpu")
+            return candidates
+        message = (
+            f"{expected} 不在可用 Provider {sorted(providers)} 中"
+        )
+        if not self.gpu_fallback:
+            raise RuntimeError(message)
+        logging.warning("OCR 后端 %s 不可用，回退 CPU：%s", self.requested_backend, message)
+        return ["cpu"]
+
+    @staticmethod
+    def _backend_kwargs(backend: str) -> dict[str, bool]:
+        use_cuda = backend == "cuda"
+        use_dml = backend == "dml"
+        return {
+            "det_use_cuda": use_cuda,
+            "cls_use_cuda": use_cuda,
+            "rec_use_cuda": use_cuda,
+            "det_use_dml": use_dml,
+            "cls_use_dml": use_dml,
+            "rec_use_dml": use_dml,
+        }
+
+    @staticmethod
+    def _engine_providers(engine: Any) -> dict[str, tuple[str, ...]]:
+        holders = {
+            "det": getattr(getattr(engine, "text_det", None), "infer", None),
+            "cls": getattr(getattr(engine, "text_cls", None), "infer", None),
+            "rec": getattr(getattr(engine, "text_rec", None), "session", None),
+        }
+        providers: dict[str, tuple[str, ...]] = {}
+        for name, holder in holders.items():
+            session = getattr(holder, "session", holder)
+            if session is not None and hasattr(session, "get_providers"):
+                providers[name] = tuple(map(str, session.get_providers()))
+        return providers
+
+    def _initialize_backend(self, backend: str) -> None:
+        if self._engine_factory is None:
+            raise RuntimeError("RapidOCR engine factory 未初始化")
+        engine = self._engine_factory(**self._backend_kwargs(backend))
+        providers = self._engine_providers(engine)
+        expected = self.BACKEND_PROVIDERS[backend]
+        if len(providers) != 3 or any(
+            not values or values[0] != expected for values in providers.values()
+        ):
+            raise RuntimeError(
+                f"RapidOCR 会话未全部使用 {expected}：{providers}"
+            )
+        if self._np is None:
+            import numpy as np
+
+            self._np = np
+        probe = self._np.full((64, 192, 3), 255, dtype=self._np.uint8)
+        engine(probe)
+        self._engine = engine
+        self.active_backend = backend
+        self.actual_providers = providers
+        self.load_error = ""
+        logging.info(
+            "OCR 后端已启用：requested=%s active=%s provider=%s available=%s",
+            self.requested_backend,
+            self.active_backend,
+            self.actual_provider,
+            list(self.available_providers),
+        )
+
+    def _fallback_after_inference_failure(self, exc: Exception) -> bool:
+        if self.active_backend not in {"cuda", "dml"} or not self.gpu_fallback:
+            return False
+        if not self._fallback_warned:
+            logging.warning(
+                "OCR %s 推理失败，自动回退 CPU：%s", self.active_backend, exc
+            )
+            self._fallback_warned = True
+        self._initialize_backend("cpu")
+        return True
 
     def read(
         self, image: Any, offset: tuple[int, int] = (0, 0)
@@ -258,7 +458,12 @@ class LocalOCR:
                 logging.warning("RapidOCR 不可用，局部 OCR 信号已禁用。")
                 self._warned = True
             return []
-        result, _elapsed = self._engine(image)
+        try:
+            result, _elapsed = self._engine(image)
+        except Exception as exc:
+            if not self._fallback_after_inference_failure(exc):
+                raise
+            result, _elapsed = self._engine(image)
         tokens: list[OCRToken] = []
         for item in result or []:
             box, text, confidence = item
@@ -277,6 +482,46 @@ class LocalOCR:
                 )
             )
         return tokens
+
+
+def get_shared_local_ocr(config: dict[str, Any], np_module: Any) -> LocalOCR:
+    settings = config.get("recognition_v2", {})
+    key = (
+        os.environ.get(
+            "HUNTER_OCR_BACKEND", str(settings.get("ocr_backend", "auto"))
+        ).lower(),
+        bool(settings.get("ocr_gpu_fallback", True)),
+        json.dumps(
+            {name: value for name, value in settings.items() if name.startswith("ocr_")},
+            sort_keys=True,
+            ensure_ascii=True,
+        ),
+    )
+    with _OCR_CACHE_LOCK:
+        engine = _SHARED_OCR_ENGINES.get(key)
+        if engine is None:
+            engine = LocalOCR(config, np_module=np_module)
+            _SHARED_OCR_ENGINES[key] = engine
+        return engine
+
+
+def clear_ocr_runtime(*, engines: bool = False) -> None:
+    global _OCR_CACHE_HITS, _OCR_CACHE_MISSES
+    with _OCR_CACHE_LOCK:
+        _OCR_RESULT_CACHE.clear()
+        _OCR_CACHE_HITS = 0
+        _OCR_CACHE_MISSES = 0
+        if engines:
+            _SHARED_OCR_ENGINES.clear()
+
+
+def ocr_cache_info() -> dict[str, int]:
+    with _OCR_CACHE_LOCK:
+        return {
+            "entries": len(_OCR_RESULT_CACHE),
+            "hits": _OCR_CACHE_HITS,
+            "misses": _OCR_CACHE_MISSES,
+        }
 
 
 def _normalized_text(value: str) -> str:
@@ -299,8 +544,18 @@ class RecognitionEngine:
         self.settings = config.get("recognition_v2", {})
         self.cv2 = cv2
         self.np = np
-        self.ocr = ocr or LocalOCR()
+        self.ocr = ocr or get_shared_local_ocr(config, np)
         self._template_control_cache: dict[tuple[str, tuple[int, ...]], Any] = {}
+        self._current_image_hash = ""
+        self._ocr_cache_config = json.dumps(
+            {
+                name: value
+                for name, value in self.settings.items()
+                if name.startswith("ocr_")
+            },
+            sort_keys=True,
+            ensure_ascii=True,
+        )
 
     @staticmethod
     def _crop(image: Any, rect: Iterable[int]) -> tuple[Any, tuple[int, int]]:
@@ -312,6 +567,27 @@ class RecognitionEngine:
         return image[y1:y2, x1:x2], (x1, y1)
 
     def _read_region(self, image: Any, rect: Iterable[int]) -> list[OCRToken]:
+        global _OCR_CACHE_HITS, _OCR_CACHE_MISSES
+        rect_key = tuple(map(int, rect))
+        cache_enabled = bool(self.settings.get("ocr_cache", True))
+        if cache_enabled:
+            _ = self.ocr.available
+        cache_key = (
+            self._current_image_hash,
+            rect_key,
+            float(self.settings.get("ocr_scale", 2.0)),
+            self.ocr.cache_identity,
+            self.settings.get("ocr_model_version", self.ocr.model_version),
+            self._ocr_cache_config,
+        )
+        if cache_enabled and self._current_image_hash:
+            with _OCR_CACHE_LOCK:
+                cached = _OCR_RESULT_CACHE.get(cache_key)
+                if cached is not None:
+                    _OCR_RESULT_CACHE.move_to_end(cache_key)
+                    _OCR_CACHE_HITS += 1
+                    return list(cached)
+                _OCR_CACHE_MISSES += 1
         crop, offset = self._crop(image, rect)
         if crop.size == 0:
             return []
@@ -325,7 +601,7 @@ class RecognitionEngine:
                 interpolation=self.cv2.INTER_CUBIC,
             )
             tokens = self.ocr.read(crop)
-            return [
+            result = [
                 OCRToken(
                     token.text,
                     token.confidence,
@@ -338,7 +614,24 @@ class RecognitionEngine:
                 )
                 for token in tokens
             ]
-        return self.ocr.read(crop, offset)
+        else:
+            result = self.ocr.read(crop, offset)
+        if cache_enabled and self._current_image_hash:
+            max_entries = max(1, int(self.settings.get("ocr_cache_max_entries", 2048)))
+            cache_key = (
+                self._current_image_hash,
+                rect_key,
+                float(self.settings.get("ocr_scale", 2.0)),
+                self.ocr.cache_identity,
+                self.settings.get("ocr_model_version", self.ocr.model_version),
+                self._ocr_cache_config,
+            )
+            with _OCR_CACHE_LOCK:
+                _OCR_RESULT_CACHE[cache_key] = tuple(result)
+                _OCR_RESULT_CACHE.move_to_end(cache_key)
+                while len(_OCR_RESULT_CACHE) > max_entries:
+                    _OCR_RESULT_CACHE.popitem(last=False)
+        return result
 
     @staticmethod
     def _enabled(spec: dict[str, Any], template_scores: dict[str, float]) -> bool:
@@ -616,6 +909,10 @@ class RecognitionEngine:
         timestamp: float | None = None,
     ) -> Observation:
         scores = dict(template_scores or {})
+        if bool(self.settings.get("ocr_cache", True)):
+            self._current_image_hash = hashlib.sha256(image.tobytes()).hexdigest()
+        else:
+            self._current_image_hash = ""
         titles, title_tokens = self.detect_titles(image, scores)
         controls, control_tokens = self.detect_controls(image, scores)
         numbers, number_tokens = self.detect_numbers(image, scores)

@@ -27,7 +27,7 @@
       "expected_content_top": 53,
       "expected_legacy_page": "tower",
       "expected_state": "tower_ready",
-      "required_controls": ["start_challenge", "quick_challenge"],
+      "required_controls": ["home", "start_challenge", "quick_challenge"],
       "forbidden_controls": []
     },
     {
@@ -164,6 +164,110 @@
       "expected_state": "hunter_quick_ready",
       "required_controls": ["quick_clear"],
       "forbidden_controls": ["hunter_start", "quick_disabled", "hunter_speed"]
+    },
+    {
+      "file": "milestone4r-tower-changed.png",
+      "source": "runs/20260729-074816/timeout-state-tower_ready-normalized.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "tower_changed",
+      "expected_state": "tower_changed",
+      "required_controls": ["confirm_difficulty"],
+      "forbidden_controls": ["home", "start_challenge", "quick_challenge"]
+    },
+    {
+      "file": "milestone4r-tower-manual.png",
+      "source": "runs/20260729-074816/timeout-main、trial-normalized.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "tower_manual",
+      "expected_state": "tower_ready",
+      "required_controls": ["home", "start_challenge"],
+      "forbidden_controls": ["quick_challenge", "confirm_difficulty"]
+    },
+    {
+      "file": "milestone4r-tower-battle-confirm.webp",
+      "source": "runs/20260729-121111/timeout-state-tower_battle_confirm-normalized.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "tower_battle_confirm",
+      "expected_state": "tower_battle_confirm",
+      "required_controls": ["confirm_battle"],
+      "forbidden_controls": ["confirm_difficulty", "start_challenge", "quick_challenge"]
+    },
+    {
+      "file": "milestone4r-tower-failure.webp",
+      "source": "runs/20260729-132545/timeout-state-reward-normalized.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "unknown",
+      "expected_state": "tower_failure",
+      "required_controls": ["dismiss_tower_failure"],
+      "forbidden_controls": ["dismiss_reward", "dismiss_result", "dismiss_overlay"]
+    },
+    {
+      "file": "milestone4r-resource-dialog.png",
+      "source": "runs/20260729-074816/timeout-resource_confirm、reward-normalized.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "resource_dialog",
+      "expected_state": "resource_dialog",
+      "required_controls": ["home", "close_resource", "resource_quick"],
+      "forbidden_controls": ["resource_confirm", "dismiss_reward"]
+    },
+    {
+      "file": "milestone4r-resource-confirm.webp",
+      "source": "runs/20260729-133650/timeout-state-resource_confirm、reward-normalized.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "resource_confirm",
+      "expected_state": "resource_confirm",
+      "required_controls": ["resource_confirm"],
+      "forbidden_controls": ["hunter_confirm", "dismiss_reward", "resource_quick"]
+    },
+    {
+      "file": "milestone4r-rank-overlay.webp",
+      "source": "runs/20260729-135926/timeout-hunter_league_failure、hunter_league_victory-normalized.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "infinite_rank_drop",
+      "expected_state": "rank_overlay",
+      "required_controls": ["dismiss_rank_overlay"],
+      "forbidden_controls": ["dismiss_reward", "dismiss_result", "dismiss_overlay"]
+    },
+    {
+      "file": "milestone4r-rank-overlay-title.webp",
+      "source": "runs/20260729-175836/timeout-state-rank_overlay-normalized.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "infinite_rank_drop",
+      "expected_state": "rank_overlay",
+      "required_controls": ["dismiss_rank_overlay_title"],
+      "forbidden_controls": ["dismiss_rank_overlay", "dismiss_reward", "dismiss_result"]
+    },
+    {
+      "file": "milestone4r-rank-overview.webp",
+      "source": "runs/20260729-215344/inspect-rank_overview-raw.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "rank_overview",
+      "expected_state": "rank_overview",
+      "required_controls": ["home", "rank_tasks_tab"],
+      "forbidden_controls": ["rank_entry", "league_go", "league_match"],
+      "expected_control_counts": {"home": 1, "rank_tasks_tab": 1}
+    },
+    {
+      "file": "milestone4r-rank-tasks-3-of-10.webp",
+      "source": "runs/20260729-211608/inspect-rank_tasks-raw.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "rank_tasks",
+      "expected_state": "rank_tasks",
+      "required_controls": ["home", "league_go"],
+      "forbidden_controls": ["rank_entry", "rank_tasks_tab", "league_match"],
+      "expected_control_counts": {"home": 1, "league_go": 2},
+      "expected_numeric_values": {"hunter_league_matches": 3}
+    },
+    {
+      "file": "milestone4r-rank-tasks-10-of-10.webp",
+      "source": "runs/20260729-230323/inspect-rank_tasks-raw.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "rank_tasks",
+      "expected_state": "rank_tasks",
+      "required_controls": ["home"],
+      "forbidden_controls": ["rank_entry", "rank_tasks_tab", "league_go", "league_match"],
+      "expected_control_counts": {"home": 1},
+      "expected_numeric_values": {"hunter_league_matches": 10}
     }
   ]
 }

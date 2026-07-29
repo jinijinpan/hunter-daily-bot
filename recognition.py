@@ -827,7 +827,31 @@ class RecognitionEngine:
             key = (control.name, control.rect)
             if key not in deduplicated or deduplicated[key].confidence < control.confidence:
                 deduplicated[key] = control
-        return list(deduplicated.values()), all_tokens
+        center_distance = float(
+            self.settings.get("control_dedup_center_distance", 12.0)
+        )
+        spatially_deduplicated: list[DetectedControl] = []
+        for control in sorted(
+            deduplicated.values(), key=lambda item: item.confidence, reverse=True
+        ):
+            x1, y1, x2, y2 = control.rect
+            center = ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+            overlaps_existing = False
+            for existing in spatially_deduplicated:
+                if existing.name != control.name:
+                    continue
+                ex1, ey1, ex2, ey2 = existing.rect
+                existing_center = ((ex1 + ex2) / 2.0, (ey1 + ey2) / 2.0)
+                if (
+                    (center[0] - existing_center[0]) ** 2
+                    + (center[1] - existing_center[1]) ** 2
+                    <= center_distance**2
+                ):
+                    overlaps_existing = True
+                    break
+            if not overlaps_existing:
+                spatially_deduplicated.append(control)
+        return spatially_deduplicated, all_tokens
 
     def detect_numbers(
         self, image: Any, template_scores: dict[str, float]
@@ -846,9 +870,8 @@ class RecognitionEngine:
         return values, tokens
 
     def _classify(self, observation: Observation) -> tuple[str, float, dict[str, dict[str, float]]]:
-        best_state = "unknown"
-        best_confidence = 0.0
         all_signals: dict[str, dict[str, float]] = {}
+        candidates: dict[str, float] = {}
         control_scores: dict[str, float] = {}
         for control in observation.controls:
             control_scores[control.name] = max(
@@ -894,9 +917,17 @@ class RecognitionEngine:
             if len(signals) < minimum:
                 continue
             confidence = sum(signals.values()) / len(signals)
-            if confidence > best_confidence:
-                best_state = state
-                best_confidence = confidence
+            candidates[state] = confidence
+        for foreground, occluded_states in self.config.get(
+            "state_occlusion_overrides", {}
+        ).items():
+            if foreground in candidates:
+                for state in occluded_states:
+                    candidates.pop(str(state), None)
+        if not candidates:
+            return "unknown", 0.0, all_signals
+        best_state = max(candidates, key=candidates.get)
+        best_confidence = candidates[best_state]
         return best_state, round(best_confidence, 4), all_signals
 
     def observe(

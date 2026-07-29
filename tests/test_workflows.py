@@ -4,12 +4,14 @@ import sys
 import unittest
 from pathlib import Path
 
+import numpy as np
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from bot import DailyBot, PageTimeout, SafetyStop
-from recognition import DetectedControl, Observation
+from bot import DailyBot, DesktopGame, PageTimeout, SafetyStop
+from recognition import DetectedControl, Observation, OCRToken
 
 
 class FakeGame:
@@ -131,11 +133,22 @@ class CapturedWorkflowTests(unittest.TestCase):
                 state = self.states.pop(0)
                 if state not in expected:
                     raise AssertionError(f"V2 state {state} not in {expected}")
+                controls = []
+                if state == "tower_ready":
+                    controls.append(
+                        DetectedControl(
+                            "quick_challenge",
+                            (790, 570, 1025, 665),
+                            0.99,
+                            "color+ocr",
+                        )
+                    )
                 return Observation(
                     timestamp=1.0,
                     viewport=(0, 0, 1091, 700),
                     state=state,
                     state_confidence=0.95,
+                    controls=controls,
                 )
 
             def click_detected_control(self, name, _label, **kwargs):
@@ -184,6 +197,116 @@ class CapturedWorkflowTests(unittest.TestCase):
         )
         self.assertEqual([{"main"}], game.recoveries)
 
+    def test_v2_tower_confirms_changed_difficulty_then_runs_manual_path(self):
+        controls = {
+            "tower_changed": DetectedControl(
+                "confirm_difficulty", (489, 484, 604, 524), 0.99, "color+ocr"
+            ),
+            "tower_ready": DetectedControl(
+                "start_challenge", (791, 596, 943, 639), 0.99, "color+ocr"
+            ),
+            "tower_battle_confirm": DetectedControl(
+                "confirm_battle", (573, 485, 686, 525), 0.99, "color+ocr"
+            ),
+            "reward": DetectedControl(
+                "dismiss_reward", (478, 610, 614, 628), 0.99, "ocr"
+            ),
+            "tower_post_battle": DetectedControl(
+                "tower_exit", (25, 626, 173, 669), 0.99, "template"
+            ),
+        }
+
+        class TowerGame:
+            def __init__(self):
+                self.states = iter(
+                    [
+                        "tasks",
+                        "tower_changed",
+                        "tower_ready",
+                        "tower_ready",
+                        "tower_battle_confirm",
+                        "reward",
+                        "tower_post_battle",
+                        "tower_ready",
+                    ]
+                )
+                self.actions = []
+
+            def wait_for_state(self, expected, **_kwargs):
+                state = next(self.states)
+                if state not in expected:
+                    raise AssertionError(f"V2 state {state} not in {expected}")
+                state_controls = [controls[state]] if state in controls else []
+                return Observation(
+                    timestamp=1.0,
+                    viewport=(0, 0, 1091, 700),
+                    state=state,
+                    state_confidence=0.99,
+                    controls=state_controls,
+                )
+
+            def click_detected_control(self, name, _label, **kwargs):
+                self.actions.append(
+                    (name, set(kwargs["allowed_states"]), set(kwargs["target_states"]))
+                )
+                return Observation(1.0, (0, 0, 1091, 700), state="unknown_transient")
+
+        game = TowerGame()
+        bot = DailyBot(game, self.config)
+        bot._find_task_button = lambda _task: ((512, 316), False)
+
+        self.assertEqual("tower", bot._open_tower_task())
+        bot._run_tower()
+
+        self.assertEqual(
+            [
+                "go",
+                "confirm_difficulty",
+                "start_challenge",
+                "confirm_battle",
+                "dismiss_reward",
+                "tower_exit",
+            ],
+            [name for name, _sources, _targets in game.actions],
+        )
+        self.assertEqual(
+            {"tower_ready"},
+            game.actions[1][2],
+        )
+
+    def test_v2_tower_prefers_quick_challenge_when_both_controls_exist(self):
+        quick = DetectedControl(
+            "quick_challenge", (790, 570, 1025, 665), 0.99, "color+ocr"
+        )
+        start = DetectedControl(
+            "start_challenge", (790, 510, 1025, 555), 0.99, "color+ocr"
+        )
+
+        class TowerGame:
+            def __init__(self):
+                self.states = iter(["tower_ready", "tower_ready"])
+                self.actions = []
+
+            def wait_for_state(self, expected, **_kwargs):
+                state = next(self.states)
+                controls = [quick, start] if state == "tower_ready" else []
+                return Observation(
+                    1.0, (0, 0, 1091, 700), controls=controls,
+                    state=state, state_confidence=0.99,
+                )
+
+            def click_detected_control(self, name, _label, **kwargs):
+                self.actions.append(name)
+                return Observation(1.0, (0, 0, 1091, 700), state="tower_result")
+
+        game = TowerGame()
+        bot = DailyBot(game, self.config)
+        bot._finish_tower_quick_result = lambda _observation: None
+
+        bot._run_tower()
+
+        self.assertEqual(["quick_challenge"], game.actions)
+
     def test_v2_vertical_chain_challenges_then_returns_and_claims_reward(self):
         def observed(state, controls=()):
             return Observation(
@@ -204,8 +327,22 @@ class CapturedWorkflowTests(unittest.TestCase):
                     observed("main"),
                     observed("tasks"),
                     observed("tasks"),
-                    observed("tower_ready"),
-                    observed("tower_ready"),
+                    observed("tower_ready", [
+                        DetectedControl(
+                            "quick_challenge",
+                            (790, 570, 1025, 665),
+                            0.99,
+                            "color+ocr",
+                        )
+                    ]),
+                    observed("tower_ready", [
+                        DetectedControl(
+                            "quick_challenge",
+                            (790, 570, 1025, 665),
+                            0.99,
+                            "color+ocr",
+                        )
+                    ]),
                     observed("tower_result"),
                     observed("tower_ready"),
                     observed("main"),
@@ -442,10 +579,15 @@ class CapturedWorkflowTests(unittest.TestCase):
                 "hunter_confirm",
                 "reward",
                 "hunter_field",
+                "main",
+                "tasks",
             ]
         )
         bot = DailyBot(game, self.config)
-        bot._find_task_button = lambda _task: ((1008, 503), False)
+        task_results = iter(
+            [((1008, 503), False), ((1008, 503), True)]
+        )
+        bot._find_task_button = lambda _task: next(task_results)
 
         self.assertEqual("hunter_field", bot._open_hunter_task())
         bot._run_hunter_field("hunter_field")
@@ -458,15 +600,17 @@ class CapturedWorkflowTests(unittest.TestCase):
                 "hunter_speed",
                 "hunter_confirm",
                 "dismiss_reward",
+                "secretary",
             ],
             [name for name, _sources, _targets in game.actions],
         )
-        self.assertEqual([{"main"}], game.recoveries)
+        self.assertEqual([{"main"}, {"main"}], game.recoveries)
 
-    def test_v2_hunter_disabled_stops_without_clicking(self):
+    def test_v2_hunter_disabled_returns_to_tasks_and_requires_completed_progress(self):
         class DisabledGame:
             def __init__(self):
                 self.actions = []
+                self.recoveries = []
 
             def wait_for_state(self, expected, **_kwargs):
                 self.assert_expected = expected
@@ -485,13 +629,183 @@ class CapturedWorkflowTests(unittest.TestCase):
             def click_detected_control(self, name, _label, **_kwargs):
                 self.actions.append(name)
 
+            def recover_to_state(self, expected, **_kwargs):
+                self.recoveries.append(set(expected))
+                return Observation(
+                    timestamp=1.0,
+                    viewport=(0, 0, 1091, 700),
+                    state="main",
+                    state_confidence=0.99,
+                )
+
         game = DisabledGame()
         bot = DailyBot(game, self.config)
+        bot._open_daily_tasks = lambda: game.actions.append("secretary")
+        bot._find_task_button = lambda _task: ((1012, 318), False)
 
-        with self.assertRaises(SafetyStop):
+        with self.assertRaisesRegex(SafetyStop, "任务仍未完成"):
             bot._run_hunter_field("hunter_field")
 
-        self.assertEqual([], game.actions)
+        self.assertEqual(["secretary"], game.actions)
+        self.assertEqual([{"main"}], game.recoveries)
+
+    def test_v2_hunter_disabled_accepts_completed_progress_after_safe_return(self):
+        class DisabledGame:
+            def wait_for_state(self, _expected, **_kwargs):
+                return Observation(
+                    timestamp=1.0,
+                    viewport=(0, 0, 1091, 700),
+                    state="hunter_field",
+                    state_confidence=0.99,
+                    controls=[
+                        DetectedControl(
+                            "quick_disabled", (820, 570, 1010, 665), 0.99, "color+ocr"
+                        )
+                    ],
+                )
+
+            @staticmethod
+            def click_detected_control(_name, _label, **_kwargs):
+                raise AssertionError("disabled hunter path must not click a challenge control")
+
+            @staticmethod
+            def recover_to_state(_expected, **_kwargs):
+                return Observation(
+                    timestamp=1.0,
+                    viewport=(0, 0, 1091, 700),
+                    state="main",
+                    state_confidence=0.99,
+                )
+
+        game = DisabledGame()
+        bot = DailyBot(game, self.config)
+        bot._open_daily_tasks = lambda: None
+        bot._find_task_button = lambda _task: ((1012, 318), True)
+
+        bot._run_hunter_field("hunter_field")
+
+    def test_v2_hunter_requires_completed_progress_after_reward(self):
+        class HunterGame:
+            def __init__(self):
+                self.states = iter(
+                    [
+                        "hunter_quick_ready",
+                        "hunter_confirm",
+                        "reward",
+                        "hunter_field",
+                        "main",
+                        "tasks",
+                    ]
+                )
+                self.actions = []
+                self.recoveries = []
+
+            def wait_for_state(self, expected, **_kwargs):
+                state = next(self.states)
+                if state not in expected:
+                    raise AssertionError(f"V2 state {state} not in {expected}")
+                return Observation(
+                    1.0, (0, 0, 1091, 700), state=state, state_confidence=0.99
+                )
+
+            def click_detected_control(self, name, _label, **_kwargs):
+                self.actions.append(name)
+                return Observation(1.0, (0, 0, 1091, 700), state="unknown_transient")
+
+            def recover_to_state(self, expected, **_kwargs):
+                self.recoveries.append(set(expected))
+                return Observation(1.0, (0, 0, 1091, 700), state="main")
+
+        game = HunterGame()
+        bot = DailyBot(game, self.config)
+        bot._find_task_button = lambda _task: ((1010, 503), False)
+
+        with self.assertRaisesRegex(SafetyStop, "任务仍未完成"):
+            bot._run_hunter_field("hunter_quick_ready")
+
+        self.assertEqual(
+            ["quick_clear", "hunter_confirm", "dismiss_reward", "secretary"],
+            game.actions,
+        )
+        self.assertEqual([{"main"}], game.recoveries)
+
+    def test_v2_resource_supply_uses_detected_controls_for_full_path(self):
+        class ResourceGame:
+            def __init__(self):
+                self.states = iter(
+                    [
+                        "tasks",
+                        "resource_hub",
+                        "resource_hub",
+                        "resource_dialog",
+                        "resource_dialog",
+                        "resource_confirm",
+                        "reward",
+                        "resource_dialog",
+                        "resource_hub",
+                    ]
+                )
+                self.actions = []
+
+            def wait_for_state(self, expected, **_kwargs):
+                state = next(self.states)
+                if state not in expected:
+                    raise AssertionError(f"V2 state {state} not in {expected}")
+                return Observation(
+                    1.0, (0, 0, 1091, 700), state=state, state_confidence=0.99
+                )
+
+            def click_detected_control(self, name, _label, **kwargs):
+                self.actions.append(
+                    (name, set(kwargs["allowed_states"]), set(kwargs["target_states"]))
+                )
+                return Observation(1.0, (0, 0, 1091, 700), state="unknown_transient")
+
+            def click_reference(self, *_args, **_kwargs):
+                raise AssertionError("V2 资源补给不得使用固定坐标")
+
+        game = ResourceGame()
+        bot = DailyBot(game, self.config)
+        bot._find_task_button = lambda _task: ((512, 399), False)
+
+        self.assertTrue(bot._open_resource_task())
+        bot._run_resource_supply()
+
+        self.assertEqual(
+            [
+                "go",
+                "resource_magic",
+                "resource_quick",
+                "resource_confirm",
+                "dismiss_reward",
+                "close_resource",
+            ],
+            [name for name, _sources, _targets in game.actions],
+        )
+        self.assertEqual(
+            {"resource_confirm", "reward"},
+            game.actions[2][2],
+        )
+
+    def test_v2_resource_supply_stops_when_quick_control_is_missing(self):
+        class ResourceGame:
+            def wait_for_state(self, expected, **_kwargs):
+                return Observation(
+                    1.0,
+                    (0, 0, 1091, 700),
+                    state="resource_dialog",
+                    state_confidence=0.99,
+                    controls=[],
+                )
+
+            def click_detected_control(self, name, _label, **kwargs):
+                observation = kwargs["observation"]
+                if not any(control.name == name for control in observation.controls):
+                    raise SafetyStop("未检测到可信控件 resource_quick")
+                raise AssertionError("不应执行点击")
+
+        with self.assertRaisesRegex(SafetyStop, "resource_quick"):
+            DailyBot(ResourceGame(), self.config)._run_resource_quick()
 
     def test_v2_startup_from_tasks_recovers_home_before_workflow(self):
         game = FakeGame(detected_page="tasks")
@@ -588,6 +902,153 @@ class CapturedWorkflowTests(unittest.TestCase):
                 ("tower", "tower_manual", "trial"),
             ],
             game.waits,
+        )
+
+    def test_v2_tower_can_resume_from_detected_battle_confirmation(self):
+        controls = {
+            "tower_battle_confirm": DetectedControl(
+                "confirm_battle", (573, 483, 689, 523), 0.99, "color+ocr"
+            ),
+            "reward": DetectedControl(
+                "dismiss_reward", (478, 610, 614, 628), 0.99, "ocr"
+            ),
+            "tower_post_battle": DetectedControl(
+                "tower_exit", (25, 626, 173, 669), 0.99, "template"
+            ),
+        }
+
+        class TowerGame:
+            def __init__(self):
+                self.states = iter(
+                    [
+                        "tower_battle_confirm",
+                        "reward",
+                        "tower_post_battle",
+                        "tower_ready",
+                    ]
+                )
+                self.actions = []
+
+            def wait_for_state(self, expected, **_kwargs):
+                state = next(self.states)
+                if state not in expected:
+                    raise AssertionError(f"V2 state {state} not in {expected}")
+                state_controls = [controls[state]] if state in controls else []
+                return Observation(
+                    1.0,
+                    (0, 0, 1091, 700),
+                    controls=state_controls,
+                    state=state,
+                    state_confidence=0.99,
+                )
+
+            def click_detected_control(self, name, _label, **kwargs):
+                self.actions.append(
+                    (name, set(kwargs["allowed_states"]), set(kwargs["target_states"]))
+                )
+                return Observation(1.0, (0, 0, 1091, 700), state="unknown_transient")
+
+        game = TowerGame()
+        DailyBot(game, self.config)._finish_tower_manual_battle()
+
+        self.assertEqual(
+            ["confirm_battle", "dismiss_reward", "tower_exit"],
+            [name for name, _sources, _targets in game.actions],
+        )
+
+    def test_v2_tower_closes_multiple_detected_reward_layers(self):
+        reward_controls = [
+            DetectedControl(
+                "dismiss_reward", (478, 608, 614, 628), 0.99, "ocr"
+            )
+        ]
+
+        class TowerGame:
+            def __init__(self):
+                self.states = iter(["reward", "tower_post_battle"])
+                self.actions = []
+
+            def wait_for_state(self, expected, **_kwargs):
+                state = next(self.states)
+                if state not in expected:
+                    raise AssertionError(f"V2 state {state} not in {expected}")
+                controls = reward_controls if state == "reward" else []
+                return Observation(
+                    1.0,
+                    (0, 0, 1091, 700),
+                    controls=controls,
+                    state=state,
+                    state_confidence=0.99,
+                )
+
+            def click_detected_control(self, name, _label, **_kwargs):
+                self.actions.append(name)
+                return Observation(1.0, (0, 0, 1091, 700), state="unknown_transient")
+
+        game = TowerGame()
+        first_reward = Observation(
+            1.0,
+            (0, 0, 1091, 700),
+            controls=reward_controls,
+            state="reward",
+            state_confidence=0.99,
+        )
+
+        result = DailyBot(game, self.config)._close_tower_rewards_v2(first_reward)
+
+        self.assertEqual("tower_post_battle", result.state)
+        self.assertEqual(["dismiss_reward", "dismiss_reward"], game.actions)
+
+    def test_v2_tower_failure_uses_detected_continue_and_returns_to_lobby(self):
+        controls = {
+            "tower_failure": [
+                DetectedControl(
+                    "dismiss_tower_failure", (478, 545, 613, 566), 0.99, "ocr"
+                )
+            ]
+        }
+
+        class TowerGame:
+            def __init__(self):
+                self.states = iter(["tower_failure", "tower_ready"])
+                self.actions = []
+
+            def wait_for_state(self, expected, **_kwargs):
+                state = next(self.states)
+                if state not in expected:
+                    raise AssertionError(f"V2 state {state} not in {expected}")
+                return Observation(
+                    1.0,
+                    (0, 0, 1091, 700),
+                    controls=controls.get(state, []),
+                    state=state,
+                    state_confidence=0.99,
+                )
+
+            def click_detected_control(self, name, _label, **kwargs):
+                self.actions.append(
+                    (name, set(kwargs["allowed_states"]), set(kwargs["target_states"]))
+                )
+                return Observation(1.0, (0, 0, 1091, 700), state="unknown_transient")
+
+        game = TowerGame()
+        confirmation = Observation(
+            1.0,
+            (0, 0, 1091, 700),
+            controls=[
+                DetectedControl(
+                    "confirm_battle", (573, 483, 689, 523), 0.99, "color+ocr"
+                )
+            ],
+            state="tower_battle_confirm",
+            state_confidence=0.99,
+        )
+
+        DailyBot(game, self.config)._finish_tower_manual_battle_v2(confirmation)
+
+        self.assertEqual(
+            ["confirm_battle", "dismiss_tower_failure"],
+            [name for name, _sources, _targets in game.actions],
         )
 
     def test_tower_exit_retries_clicking_until_lobby_returns(self):
@@ -1066,6 +1527,196 @@ class CapturedWorkflowTests(unittest.TestCase):
         ]
         self.assertEqual(expected, [list(point) for point, _label in game.clicks])
 
+    @staticmethod
+    def _rank_tasks_observation(progress):
+        return Observation(
+            timestamp=1.0,
+            viewport=(0, 0, 1091, 700),
+            state="rank_tasks",
+            state_confidence=0.99,
+            numeric_values={"hunter_league_matches": progress},
+            controls=[
+                DetectedControl("league_go", (962, 502, 1047, 537), 0.99, "color+ocr"),
+                DetectedControl("league_go", (962, 581, 1047, 616), 0.99, "color+ocr"),
+            ],
+            ocr_tokens=[
+                OCRToken("参与10次猎人联赛。", 0.99, (469, 575, 628, 593)),
+                OCRToken(f"进度：{progress}/10", 0.99, (468, 603, 541, 619)),
+            ],
+        )
+
+    def test_v2_hunter_league_runs_only_remaining_matches_and_rechecks_ten(self):
+        class ProgressGame:
+            def __init__(self):
+                self.actions = []
+                self.diagnostics = []
+
+            def click_detected_control(self, name, _label, **kwargs):
+                self.actions.append((name, kwargs.get("preferred_point")))
+                return Observation(
+                    timestamp=1.0,
+                    viewport=(0, 0, 1091, 700),
+                    state="hunter_league",
+                    state_confidence=0.99,
+                )
+
+            def save_diagnostic(self, name):
+                self.diagnostics.append(name)
+
+        game = ProgressGame()
+        bot = DailyBot(game, self.config)
+        observations = [
+            self._rank_tasks_observation(3),
+            self._rank_tasks_observation(10),
+        ]
+        events = []
+        bot._open_rank_tasks = lambda _initial=None, **_kwargs: observations.pop(0)
+        bot._run_hunter_league = lambda count=None: events.append(("run", count))
+        bot._return_home_v2 = lambda: events.append(("home", None))
+
+        completed = bot._complete_hunter_league_matches()
+
+        self.assertTrue(completed)
+        self.assertEqual([("run", 7), ("home", None)], events)
+        self.assertEqual([("league_go", (548, 584))], game.actions)
+        self.assertEqual(["hunter-league-complete"], game.diagnostics)
+
+    def test_v2_hunter_league_rejects_incomplete_post_run_progress(self):
+        class ProgressGame:
+            def __init__(self):
+                self.diagnostics = []
+
+            def click_detected_control(self, *_args, **_kwargs):
+                return Observation(
+                    timestamp=1.0,
+                    viewport=(0, 0, 1091, 700),
+                    state="hunter_league",
+                    state_confidence=0.99,
+                )
+
+            def save_diagnostic(self, name):
+                self.diagnostics.append(name)
+
+        game = ProgressGame()
+        bot = DailyBot(game, self.config)
+        observations = [
+            self._rank_tasks_observation(3),
+            self._rank_tasks_observation(9),
+        ]
+        bot._open_rank_tasks = lambda _initial=None, **_kwargs: observations.pop(0)
+        bot._run_hunter_league = lambda _count=None: None
+        bot._return_home_v2 = lambda: None
+
+        with self.assertRaisesRegex(SafetyStop, "仅为 9/10"):
+            bot._complete_hunter_league_matches()
+
+        self.assertEqual(["hunter-league-progress-incomplete"], game.diagnostics)
+
+    def test_open_rank_tasks_uses_detected_main_and_task_tab_controls(self):
+        main = Observation(
+            timestamp=1.0,
+            viewport=(0, 0, 1091, 700),
+            state="main",
+            state_confidence=0.99,
+        )
+        overview = Observation(
+            timestamp=1.0,
+            viewport=(0, 0, 1091, 700),
+            state="rank_overview",
+            state_confidence=0.99,
+        )
+        tasks = self._rank_tasks_observation(3)
+        tasks_transition = self._rank_tasks_observation(3)
+        tasks_transition.numeric_values = {}
+
+        class RankGame:
+            def __init__(self):
+                self.actions = []
+
+            def recover_to_state(self, expected, **_kwargs):
+                self.actions.append(("recover", set(expected)))
+                return main
+
+            def click_detected_control(self, name, _label, **kwargs):
+                self.actions.append((name, set(kwargs["allowed_states"])))
+                return overview if name == "rank_entry" else tasks_transition
+
+            def wait_for_state(self, expected, **_kwargs):
+                self.actions.append(("wait", set(expected)))
+                return tasks
+
+            def drag_reference(self, *_args, **_kwargs):
+                raise AssertionError("visible target row must be resampled without scrolling")
+
+        game = RankGame()
+        observation = DailyBot(game, self.config)._open_rank_tasks()
+
+        self.assertEqual(3, observation.numeric_values["hunter_league_matches"])
+        self.assertEqual(
+            [
+                ("recover", {"main"}),
+                ("rank_entry", {"main"}),
+                ("rank_tasks_tab", {"rank_overview"}),
+                ("wait", {"rank_tasks"}),
+            ],
+            game.actions,
+        )
+
+    def test_open_rank_tasks_scrolls_until_ten_match_row_is_visible(self):
+        top = Observation(
+            timestamp=1.0,
+            viewport=(0, 0, 1091, 700),
+            state="rank_tasks",
+            state_confidence=0.99,
+            ocr_tokens=[
+                OCRToken("参与5次猎人联赛。", 0.99, (469, 609, 618, 629))
+            ],
+        )
+        target = self._rank_tasks_observation(3)
+
+        class ScrolledRankGame:
+            def __init__(self):
+                self.observations = [top, target]
+                self.drags = []
+
+            def wait_for_state(self, _expected, **_kwargs):
+                return self.observations.pop(0)
+
+            def drag_reference(self, start, end, duration, label):
+                self.drags.append((start, end, duration, label))
+
+            def recover_to_state(self, *_args, **_kwargs):
+                raise AssertionError("initial rank_tasks must not recover home")
+
+            def click_detected_control(self, *_args, **_kwargs):
+                raise AssertionError("scroll search must not click a guessed control")
+
+        game = ScrolledRankGame()
+        observation = DailyBot(game, self.config)._open_rank_tasks("rank_tasks")
+
+        self.assertEqual(3, observation.numeric_values["hunter_league_matches"])
+        scroll = self.config["rank_task_scroll"]
+        self.assertEqual(
+            [(scroll["from"], scroll["to"], scroll["duration_seconds"])],
+            [(start, end, duration) for start, end, duration, _label in game.drags],
+        )
+
+    def test_completed_secretary_row_does_not_skip_authoritative_league_check(self):
+        config = copy.deepcopy(self.config)
+        config["captured_task_adapters"] = ["hunter_league"]
+        game = FakeGame()
+        bot = DailyBot(game, config)
+        events = []
+        bot._use_v2_hunter_league_flow = lambda: True
+        bot._open_daily_tasks = lambda: events.append("open")
+        bot._scan_completed_tasks = lambda _tasks: {"hunter_league"}
+        bot._complete_hunter_league_matches = lambda: events.append("league") or False
+        bot._return_home_v2 = lambda: events.append("home")
+
+        bot._run_captured_tasks()
+
+        self.assertEqual(["open", "home", "open", "league", "home"], events)
+
     def test_hunter_league_result_retries_while_animation_is_visible(self):
         game = FakeGame(
             [
@@ -1081,6 +1732,19 @@ class CapturedWorkflowTests(unittest.TestCase):
 
         self.assertEqual(
             [self.config["points"]["hunter_league_result"]] * 3,
+            [list(point) for point, _label in game.clicks],
+        )
+
+    def test_hunter_league_result_dismisses_rank_promotion_overlay(self):
+        game = FakeGame(["infinite_rank_drop", "hunter_league"])
+
+        DailyBot(game, self.config)._finish_hunter_league_result()
+
+        self.assertEqual(
+            [
+                self.config["points"]["hunter_league_result"],
+                self.config["points"]["infinite_rank_continue"],
+            ],
             [list(point) for point, _label in game.clicks],
         )
 
@@ -1131,6 +1795,38 @@ class CapturedWorkflowTests(unittest.TestCase):
 
         self.assertEqual(((self.config["task_button_x"]["left"], 230), True), result)
         self.assertEqual([], game.clicks)
+
+    def test_hunter_three_progress_threshold_separates_real_scores(self):
+        class ScoreCV:
+            COLOR_BGR2GRAY = 1
+            TM_CCOEFF_NORMED = 2
+
+            def __init__(self, score):
+                self.score = score
+
+            @staticmethod
+            def cvtColor(image, _mode):
+                return image[:, :, 0]
+
+            @staticmethod
+            def matchTemplate(_region, _template, _mode):
+                return np.zeros((1, 1), dtype=np.float32)
+
+            def minMaxLoc(self, _result):
+                return 0.0, self.score, (0, 0), (0, 0)
+
+        image = np.zeros((700, 1091, 3), dtype=np.uint8)
+        game = object.__new__(DesktopGame)
+        game.config = self.config
+        game.task_progress_templates = {
+            "three": np.zeros((19, 32), dtype=np.uint8)
+        }
+
+        game.cv2 = ScoreCV(0.904)
+        self.assertTrue(game.task_progress_complete("hunter_field", (652, 318), image))
+
+        game.cv2 = ScoreCV(0.869)
+        self.assertFalse(game.task_progress_complete("hunter_field", (652, 318), image))
 
     def test_task_search_resets_to_top_before_matching(self):
         game = FakeGame()

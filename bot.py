@@ -215,11 +215,27 @@ class DesktopGame:
         self.win32gui.ShowWindow(self.window_handle, self.win32con.SW_RESTORE)
         if self.win32gui.GetForegroundWindow() == self.window_handle:
             return
-        try:
-            self.win32gui.SetForegroundWindow(self.window_handle)
-        except Exception as exc:
-            raise SafetyStop("无法激活小游戏窗口，请手动点一下窗口后重试。") from exc
+        last_error: Exception | None = None
+        for _attempt in range(2):
+            try:
+                self.win32gui.SetForegroundWindow(self.window_handle)
+            except Exception as exc:
+                last_error = exc
+            time.sleep(0.2)
+            if self.win32gui.GetForegroundWindow() == self.window_handle:
+                return
+
+        rect = self._window_rect()
+        title_x = rect.left + rect.width // 2
+        title_y = rect.top + max(8, min(25, self.content_top // 2))
+        logging.warning(
+            "Win32 激活被系统拒绝，尝试单击窗口标题栏后验证前台句柄：%s",
+            (title_x, title_y),
+        )
+        self.pyautogui.click(title_x, title_y)
         time.sleep(0.4)
+        if self.win32gui.GetForegroundWindow() != self.window_handle:
+            raise SafetyStop("无法激活小游戏窗口，请手动点一下窗口后重试。") from last_error
 
     def _grab_window(self):
         monitor = {
@@ -233,6 +249,8 @@ class DesktopGame:
         return self.cv2.cvtColor(shot, self.cv2.COLOR_BGRA2BGR)
 
     def capture_frame(self) -> CapturedFrame:
+        if self.execute:
+            self.focus()
         self.window_rect = self._window_rect()
         client_size = (self.window_rect.width, self.window_rect.height)
         try:
@@ -519,6 +537,13 @@ class DesktopGame:
         if not passing:
             return "unknown"
 
+        for foreground, occluded_pages in self.config.get(
+            "page_occlusion_overrides", {}
+        ).items():
+            if foreground in passing:
+                occluded = {str(page) for page in occluded_pages}
+                passing = [page for page in passing if page not in occluded]
+
         background_pages = set(self.config.get("background_pages", []))
         foreground = [page for page in passing if page not in background_pages]
         candidates = foreground or passing
@@ -528,6 +553,13 @@ class DesktopGame:
         self, expected: Iterable[str], scores: dict[str, float]
     ) -> str | None:
         passing = self._passing_pages(scores, expected)
+        all_passing = set(self._passing_pages(scores))
+        for foreground, occluded_pages in self.config.get(
+            "page_occlusion_overrides", {}
+        ).items():
+            if foreground in all_passing:
+                occluded = {str(page) for page in occluded_pages}
+                passing = [page for page in passing if page not in occluded]
         background_pages = set(self.config.get("background_pages", []))
         if any(page in background_pages for page in passing):
             has_foreground = any(
@@ -678,10 +710,8 @@ class DesktopGame:
                 if not final_sampling:
                     final_sampling = True
                     consensus.reset()
-                    soft_deadline = min(
-                        hard_deadline,
-                        now + max(0.05, poll * required_frames),
-                    )
+                    consensus.update(last_observation)
+                    soft_deadline = hard_deadline
                     logging.info("V2 软超时已到，执行最后一组稳定帧采样。")
                 else:
                     break
@@ -970,7 +1000,7 @@ class DesktopGame:
                 remaining,
                 float(configured.get("action_hard_timeout_seconds", 12.0)),
             )
-            self.click_detected_control(
+            result = self.click_detected_control(
                 str(route["control"]),
                 f"安全恢复 {observation.state}",
                 allowed_states={observation.state},
@@ -982,6 +1012,8 @@ class DesktopGame:
                 ),
                 hard_timeout=action_budget,
             )
+            if result.state in expected_states:
+                return result
         self.save_diagnostic("recovery-hard-timeout")
         raise PageTimeout(f"安全恢复到 {sorted(expected_states)} 超过硬上限 {total_timeout:.1f} 秒。")
 
@@ -1221,6 +1253,8 @@ class DailyBot:
             modes.get("main_tasks_claim", "legacy") == "v2"
             or self._use_v2_tower_flow()
             or self._use_v2_hunter_flow()
+            or self._use_v2_hunter_league_flow()
+            or self._use_v2_resource_flow()
         ) and all(
             hasattr(self.game, name)
             for name in ("wait_for_state", "click_detected_control", "recover_to_state")
@@ -1267,6 +1301,33 @@ class DailyBot:
             and hasattr(self.game, "click_detected_control")
         )
 
+    def _use_v2_resource_flow(self) -> bool:
+        mode = (
+            self.config.get("recognition_v2", {})
+            .get("workflow_modes", {})
+            .get("main_tasks_resource_supply", "legacy")
+        )
+        return mode == "v2" and all(
+            hasattr(self.game, name)
+            for name in ("wait_for_state", "click_detected_control")
+        )
+
+    def _use_v2_hunter_league_flow(self) -> bool:
+        mode = (
+            self.config.get("recognition_v2", {})
+            .get("workflow_modes", {})
+            .get("main_tasks_hunter_league", "legacy")
+        )
+        return mode == "v2" and all(
+            hasattr(self.game, name)
+            for name in (
+                "wait_for_state",
+                "click_detected_control",
+                "recover_to_state",
+                "drag_reference",
+            )
+        )
+
     def run(self) -> None:
         self._configured_task_adapters()
         self.game.focus()
@@ -1285,6 +1346,7 @@ class DailyBot:
             "hunter_quick_available",
             "hunter_failure",
             "hunter_confirm",
+            "resource_hub",
             "resource_dialog",
             "resource_confirm",
             "abyss",
@@ -1301,6 +1363,8 @@ class DailyBot:
             "hunter_league_failure",
             "hunter_league_rewards",
             "hunter_league_challenge_rewards",
+            "rank_overview",
+            "rank_tasks",
             "infinite_rank_drop",
             "infinite_mystery",
             "infinite_map",
@@ -1309,6 +1373,7 @@ class DailyBot:
             "infinite_next",
             "infinite_finished",
             "character_switch",
+            "reward",
         }
         if page not in resumable_pages:
             if page == "unknown" and self.game.execute and self._use_v2_tower_flow():
@@ -1340,13 +1405,13 @@ class DailyBot:
             self._resume_tower_changed()
         elif page == "tower_post_battle":
             self._exit_tower_post_battle()
-            self._return_home()
+            self._return_home_v2() if self._use_v2_tower_flow() else self._return_home()
         elif page == "tower_manual":
             self._run_tower_manual()
-            self._return_home()
+            self._return_home_v2()
         elif page == "tower_battle_confirm":
             self._finish_tower_manual_battle()
-            self._return_home()
+            self._return_home_v2() if self._use_v2_tower_flow() else self._return_home()
         elif page == "trial":
             self._return_home()
         elif page in {"hunter_field", "hunter_quick_available"}:
@@ -1367,10 +1432,17 @@ class DailyBot:
             self._return_home()
         elif page == "resource_confirm":
             self._finish_resource_supply(page)
-            self._return_home()
+            self._return_home_v2()
         elif page == "resource_dialog":
             self._run_resource_quick()
-            self._return_home()
+            self._return_home_v2()
+        elif page == "resource_hub":
+            self._run_resource_supply()
+            self._return_home_v2()
+        elif page == "reward":
+            if not self._use_v2_reward_flow():
+                raise SafetyStop("奖励断点没有启用 V2 安全恢复，未执行点击。")
+            self._return_home_v2()
         elif page == "abyss":
             logging.info("从深渊挑战入口继续消耗剩余体力。")
             self._run_abyss()
@@ -1404,9 +1476,24 @@ class DailyBot:
         elif page in {"hunter_league_rewards", "hunter_league_challenge_rewards"}:
             self._close_hunter_league_rewards(page)
             self._return_home()
+        elif page in {"rank_overview", "rank_tasks"}:
+            if not self._use_v2_hunter_league_flow():
+                raise SafetyStop("职级任务断点未启用 V2，未执行页面点击。")
+            self._complete_hunter_league_matches(initial_state=page)
+            self._return_home_v2()
         elif page == "infinite_rank_drop":
-            self._dismiss_infinite_rank_drop()
-            self._run_infinite_mystery()
+            rank_return_page = (
+                "hunter_league"
+                if scores.get("hunter_league", 0.0) >= 0.35
+                and scores.get("hunter_league", 0.0)
+                > scores.get("infinite_mystery", 0.0)
+                else "infinite_mystery"
+            )
+            self._dismiss_infinite_rank_drop(rank_return_page)
+            if rank_return_page == "hunter_league":
+                self._run_hunter_league()
+            else:
+                self._run_infinite_mystery()
             self._return_home()
         elif page == "infinite_mystery":
             self._run_infinite_mystery()
@@ -1674,21 +1761,21 @@ class DailyBot:
                 "go",
                 "前往任务 tower",
                 allowed_states={"tasks"},
-                target_states={"tower_ready"},
+                target_states={"tower_changed", "tower_ready"},
                 observation=observation,
                 preferred_point=point,
             )
-            try:
-                self.game.wait_for_state({"tower_ready"})
-                return "tower"
-            except PageTimeout:
-                if not self._allow_v2_legacy_fallback():
-                    raise
-                logging.warning("无尽塔入口 V2 状态未确认，切换到已配置的旧页面回退。")
-                return self.game.wait_for_one_of(
-                    {"tower", "tower_changed", "tower_manual"},
-                    tolerate_unknown=True,
+            observation = self.game.wait_for_state({"tower_changed", "tower_ready"})
+            if observation.state == "tower_changed":
+                self.game.click_detected_control(
+                    "confirm_difficulty",
+                    "确认无尽塔难度变化",
+                    allowed_states={"tower_changed"},
+                    target_states={"tower_ready"},
+                    observation=observation,
                 )
+                self.game.wait_for_state({"tower_ready"})
+            return "tower"
         self.game.click_reference(point, "前往任务 tower")
         page = self.game.wait_for_one_of(
             {"tower", "tower_changed", "tower_manual"}, tolerate_unknown=True
@@ -1729,13 +1816,180 @@ class DailyBot:
             {"hunter_field", "hunter_quick_available"}, tolerate_unknown=True
         )
 
+    def _open_resource_task(self) -> bool:
+        task_button = self._find_task_button("resource_supply")
+        if task_button is None:
+            return False
+        point, completed = task_button
+        if completed:
+            logging.info("任务 resource_supply 已完成，等待统一领奖。")
+            return False
+        if self._use_v2_resource_flow():
+            observation = self.game.wait_for_state({"tasks"})
+            self.game.click_detected_control(
+                "go",
+                "前往任务 resource_supply",
+                allowed_states={"tasks"},
+                target_states={"resource_hub"},
+                observation=observation,
+                preferred_point=point,
+            )
+            self.game.wait_for_state({"resource_hub"})
+            return True
+        self.game.click_reference(point, "前往任务 resource_supply")
+        self.game.wait_for_page("resource_hub", tolerate_unknown=True)
+        return True
+
+    def _open_rank_tasks(self, initial_state: str | None = None) -> Observation:
+        if not self._use_v2_hunter_league_flow():
+            raise SafetyStop("猎人联赛次数验证未启用 V2，已停止。")
+        if initial_state is None:
+            observation = self.game.recover_to_state({"main"})
+            observation = self.game.click_detected_control(
+                "rank_entry",
+                "打开职级",
+                allowed_states={"main"},
+                target_states={"rank_overview", "rank_tasks"},
+                observation=observation,
+            )
+            if observation.state not in {"rank_overview", "rank_tasks"}:
+                observation = self.game.wait_for_state(
+                    {"rank_overview", "rank_tasks"}
+                )
+        else:
+            observation = self.game.wait_for_state({initial_state})
+
+        if observation.state == "rank_overview":
+            observation = self.game.click_detected_control(
+                "rank_tasks_tab",
+                "打开职级任务",
+                allowed_states={"rank_overview"},
+                target_states={"rank_tasks"},
+                observation=observation,
+            )
+            if observation.state != "rank_tasks":
+                observation = self.game.wait_for_state({"rank_tasks"})
+
+        # Action verification may accept the first high-confidence target frame
+        # before the numeric ROI has been sampled. Retry only on the already
+        # verified page; a missing value never falls back to an assumed count.
+        attempts = max(1, int(self.config.get("hunter_league_progress_attempts", 3)))
+        scroll = self.config["rank_task_scroll"]
+        search_passes = max(1, int(scroll.get("search_passes", 3)))
+        pending_observation: Observation | None = observation
+        for search_pass in range(search_passes):
+            target_row_seen = False
+            for attempt in range(attempts):
+                if pending_observation is not None:
+                    observation = pending_observation
+                    pending_observation = None
+                else:
+                    observation = self.game.wait_for_state({"rank_tasks"})
+                if "hunter_league_matches" in observation.numeric_values:
+                    return observation
+                target_row_seen = self._hunter_league_progress_row_visible(observation)
+                logging.warning(
+                    "职级任务第 %d/%d 屏第 %d/%d 次稳定采样未读到猎人联赛进度。",
+                    search_pass + 1,
+                    search_passes,
+                    attempt + 1,
+                    attempts,
+                )
+                if not target_row_seen:
+                    break
+            if target_row_seen or search_pass + 1 >= search_passes:
+                return observation
+            self.game.drag_reference(
+                scroll["from"],
+                scroll["to"],
+                scroll["duration_seconds"],
+                "滚动职级任务查找参与10次猎人联赛",
+            )
+        return observation
+
+    def _hunter_league_progress(self, observation: Observation) -> int:
+        progress = observation.numeric_values.get("hunter_league_matches")
+        target = int(self.config["hunter_league_matches"])
+        if progress is None or not 0 <= int(progress) <= target:
+            self.game.save_diagnostic("hunter-league-progress-missing")
+            raise SafetyStop("职级任务未读到合法的猎人联赛进度，已停止。")
+        return int(progress)
+
+    def _hunter_league_progress_point(
+        self, observation: Observation
+    ) -> tuple[int, int]:
+        candidates = []
+        for token in observation.ocr_tokens:
+            text = "".join(character for character in token.text if character.isalnum())
+            if "10次猎人联赛" not in text:
+                continue
+            x1, y1, x2, y2 = token.rect
+            candidates.append(((x1 + x2) // 2, (y1 + y2) // 2))
+        if not candidates:
+            self.game.save_diagnostic("hunter-league-progress-row-missing")
+            raise SafetyStop("职级任务未定位到“参与10次猎人联赛”任务行，已停止。")
+        return max(candidates, key=lambda point: point[1])
+
+    @staticmethod
+    def _hunter_league_progress_row_visible(observation: Observation) -> bool:
+        return any(
+            "10次猎人联赛"
+            in "".join(character for character in token.text if character.isalnum())
+            for token in observation.ocr_tokens
+        )
+
+    def _complete_hunter_league_matches(
+        self, initial_state: str | None = None
+    ) -> bool:
+        observation = self._open_rank_tasks(initial_state)
+        completed = self._hunter_league_progress(observation)
+        target = int(self.config["hunter_league_matches"])
+        if completed >= target:
+            logging.info("职级任务确认猎人联赛已完成：%d/%d。", completed, target)
+            return False
+
+        remaining = target - completed
+        preferred = self._hunter_league_progress_point(observation)
+        logging.info(
+            "职级任务确认猎人联赛进度 %d/%d，将继续完成 %d 场。",
+            completed,
+            target,
+            remaining,
+        )
+        transition = self.game.click_detected_control(
+            "league_go",
+            "从职级任务进入猎人联赛",
+            allowed_states={"rank_tasks"},
+            target_states={"hunter_league"},
+            observation=observation,
+            preferred_point=preferred,
+        )
+        if transition.state != "hunter_league":
+            self.game.wait_for_state({"hunter_league"})
+
+        self._run_hunter_league(remaining)
+        self._return_home_v2()
+        verified = self._open_rank_tasks()
+        actual = self._hunter_league_progress(verified)
+        if actual < target:
+            self.game.save_diagnostic("hunter-league-progress-incomplete")
+            raise SafetyStop(
+                f"猎人联赛执行后职级任务仅为 {actual}/{target}，未标记成功。"
+            )
+        logging.info("职级任务复核通过：猎人联赛 %d/%d。", actual, target)
+        self.game.save_diagnostic("hunter-league-complete")
+        return True
+
     def _run_captured_tasks(self) -> None:
         adapters = self._configured_task_adapters()
         self._open_daily_tasks()
         completed_tasks = self._scan_completed_tasks(adapters)
         self._return_home_v2()
         for task in adapters:
-            if task in completed_tasks:
+            authoritative_league_check = (
+                task == "hunter_league" and self._use_v2_hunter_league_flow()
+            )
+            if task in completed_tasks and not authoritative_league_check:
                 logging.info("任务 %s 已完成，跳过重复查找和执行。", task)
                 continue
             self._open_daily_tasks()
@@ -1756,7 +2010,8 @@ class DailyBot:
                 if hunter_mode is not None:
                     self._run_hunter_field(hunter_mode)
             elif task == "resource_supply":
-                started = self._open_task(task, "resource_hub")
+                started = self._open_resource_task()
+                prefer_v2_return = self._use_v2_resource_flow()
                 if started:
                     self._run_resource_supply()
             elif task == "abyss":
@@ -1768,9 +2023,13 @@ class DailyBot:
                 if started:
                     self._run_monster_invasion()
             elif task == "hunter_league":
-                started = self._open_task(task, "hunter_league")
-                if started:
-                    self._run_hunter_league()
+                if self._use_v2_hunter_league_flow():
+                    started = self._complete_hunter_league_matches()
+                    prefer_v2_return = True
+                else:
+                    started = self._open_task(task, "hunter_league")
+                    if started:
+                        self._run_hunter_league()
             elif task == "infinite_mystery":
                 started = self._open_infinite_task()
                 if started:
@@ -1852,6 +2111,14 @@ class DailyBot:
     def _run_tower(self) -> None:
         if self._use_v2_tower_flow():
             observation = self.game.wait_for_state({"tower_ready"})
+            control_names = {control.name for control in observation.controls}
+            if "quick_challenge" not in control_names:
+                if "start_challenge" not in control_names:
+                    raise SafetyStop(
+                        "无尽塔准备页未检测到快速挑战或开始挑战，未执行点击。"
+                    )
+                self._run_tower_manual_v2(observation)
+                return
             self.game.click_detected_control(
                 "quick_challenge",
                 "无尽塔快速挑战",
@@ -1899,6 +2166,10 @@ class DailyBot:
         )
 
     def _run_tower_manual(self) -> None:
+        if self._use_v2_tower_flow():
+            observation = self.game.wait_for_state({"tower_ready"})
+            self._run_tower_manual_v2(observation)
+            return
         points = self.config["points"]
         self._click_until_transition(
             points["tower_start"],
@@ -1908,7 +2179,87 @@ class DailyBot:
         )
         self._finish_tower_manual_battle()
 
+    def _run_tower_manual_v2(self, observation: Observation) -> None:
+        self.game.click_detected_control(
+            "start_challenge",
+            "无尽塔开始挑战",
+            allowed_states={"tower_ready"},
+            target_states={"tower_battle_confirm"},
+            observation=observation,
+        )
+        confirmation = self.game.wait_for_state({"tower_battle_confirm"})
+        self._finish_tower_manual_battle_v2(confirmation)
+
+    def _finish_tower_manual_battle_v2(
+        self, confirmation: Observation | None = None
+    ) -> None:
+        battle_timeout = float(self.config["timeouts"]["battle_seconds"])
+        confirmation = confirmation or self.game.wait_for_state(
+            {"tower_battle_confirm"}
+        )
+        self.game.click_detected_control(
+            "confirm_battle",
+            "确认进入无尽塔战斗",
+            allowed_states={"tower_battle_confirm"},
+            target_states={"reward"},
+            observation=confirmation,
+        )
+        outcome = self.game.wait_for_state(
+            {"reward", "tower_failure"}, hard_timeout=battle_timeout
+        )
+        if outcome.state == "tower_failure":
+            self.game.click_detected_control(
+                "dismiss_tower_failure",
+                "关闭无尽塔战斗失败结算",
+                allowed_states={"tower_failure"},
+                target_states={"tower_ready", "trial"},
+                observation=outcome,
+            )
+            self.game.wait_for_state({"tower_ready", "trial"})
+            return
+        reward = outcome
+        post_battle = self._close_tower_rewards_v2(reward)
+        self._exit_tower_post_battle_v2(post_battle)
+
+    def _close_tower_rewards_v2(self, reward: Observation) -> Observation:
+        max_closes = int(self.config.get("tower_reward_max_closes", 4))
+        battle_timeout = float(self.config["timeouts"]["battle_seconds"])
+        for close_index in range(max_closes):
+            self.game.click_detected_control(
+                "dismiss_reward",
+                f"关闭无尽塔通关奖励（第 {close_index + 1} 层）",
+                allowed_states={"reward"},
+                target_states={"tower_post_battle"},
+                observation=reward,
+            )
+            followup = self.game.wait_for_state(
+                {"reward", "tower_post_battle"},
+                hard_timeout=battle_timeout,
+            )
+            if followup.state == "tower_post_battle":
+                return followup
+            reward = followup
+        raise SafetyStop(
+            f"无尽塔连续出现超过 {max_closes} 层奖励，已停止继续点击。"
+        )
+
+    def _exit_tower_post_battle_v2(
+        self, post_battle: Observation | None = None
+    ) -> None:
+        post_battle = post_battle or self.game.wait_for_state({"tower_post_battle"})
+        self.game.click_detected_control(
+            "tower_exit",
+            "退出无尽塔结算",
+            allowed_states={"tower_post_battle"},
+            target_states={"tower_ready", "trial"},
+            observation=post_battle,
+        )
+        self.game.wait_for_state({"tower_ready", "trial"})
+
     def _finish_tower_manual_battle(self) -> None:
+        if self._use_v2_tower_flow():
+            self._finish_tower_manual_battle_v2()
+            return
         points = self.config["points"]
         self._click_until_transition(
             points["tower_battle_confirm"],
@@ -1926,6 +2277,9 @@ class DailyBot:
         self._exit_tower_post_battle()
 
     def _exit_tower_post_battle(self) -> None:
+        if self._use_v2_tower_flow():
+            self._exit_tower_post_battle_v2()
+            return
         targets = {"tower", "tower_manual", "trial"}
         max_clicks = int(self.config.get("tower_exit_max_clicks", 5))
         retry_wait = float(self.config.get("tower_exit_retry_wait_seconds", 4))
@@ -1954,6 +2308,19 @@ class DailyBot:
                 )
 
     def _resume_tower_changed(self) -> None:
+        if self._use_v2_tower_flow():
+            observation = self.game.wait_for_state({"tower_changed"})
+            self.game.click_detected_control(
+                "confirm_difficulty",
+                "确认无尽塔难度变化",
+                allowed_states={"tower_changed"},
+                target_states={"tower_ready"},
+                observation=observation,
+            )
+            self.game.wait_for_state({"tower_ready"})
+            self._run_tower()
+            self._return_home_v2()
+            return
         self.game.click_reference(
             self.config["points"]["tower_changed_confirm"],
             "确认无尽塔难度变化",
@@ -2015,9 +2382,16 @@ class DailyBot:
                 control.name == "hunter_start"
                 for control in observation.controls
             ):
-                raise SafetyStop(
-                    "猎魔战场仅检测到不可用的快速通关，未发现开始挑战按钮，已停止。"
-                )
+                if any(
+                    control.name == "quick_disabled"
+                    for control in observation.controls
+                ):
+                    logging.info(
+                        "猎魔战场挑战已不可用，未执行挑战点击；返回小秘书验证任务进度。"
+                    )
+                    self._verify_hunter_task_completed_v2()
+                    return
+                raise SafetyStop("猎魔战场未检测到合法挑战控件，已停止。")
             self.game.click_detected_control(
                 "hunter_start",
                 "猎魔战场开始挑战",
@@ -2059,6 +2433,22 @@ class DailyBot:
             observation=page,
         )
         self.game.wait_for_state({"hunter_field", "hunter_quick_ready"})
+        self._verify_hunter_task_completed_v2()
+
+    def _verify_hunter_task_completed_v2(self) -> None:
+        self._return_home_v2()
+        self._open_daily_tasks()
+        task_button = self._find_task_button("hunter_field")
+        if task_button is None:
+            raise SafetyStop(
+                "猎魔战场返回小秘书后未找到对应任务，无法验证完成状态。"
+            )
+        _point, completed = task_button
+        if not completed:
+            raise SafetyStop(
+                "猎魔战场快速通关后任务仍未完成且未出现领取，未标记成功。"
+            )
+        logging.info("猎魔战场完成验证通过：任务进度已完成或已出现领取。")
 
     def _finish_hunter_failure(self) -> None:
         self._click_until_transition(
@@ -2088,6 +2478,18 @@ class DailyBot:
         )
 
     def _run_resource_supply(self) -> None:
+        if self._use_v2_resource_flow():
+            observation = self.game.wait_for_state({"resource_hub"})
+            self.game.click_detected_control(
+                "resource_magic",
+                "选择魔晶补给",
+                allowed_states={"resource_hub"},
+                target_states={"resource_dialog"},
+                observation=observation,
+            )
+            self.game.wait_for_state({"resource_dialog"})
+            self._run_resource_quick()
+            return
         self.game.click_reference(
             self.config["points"]["resource_magic_card"], "选择魔晶补给"
         )
@@ -2095,13 +2497,57 @@ class DailyBot:
         self._run_resource_quick()
 
     def _run_resource_quick(self) -> None:
+        if self._use_v2_resource_flow():
+            observation = self.game.wait_for_state({"resource_dialog"})
+            self.game.click_detected_control(
+                "resource_quick",
+                "资源补给快速通关",
+                allowed_states={"resource_dialog"},
+                target_states={"resource_confirm", "reward"},
+                observation=observation,
+            )
+            page = self.game.wait_for_state({"resource_confirm", "reward"})
+            self._finish_resource_supply(page)
+            return
         self.game.click_reference(self.config["points"]["resource_speed"], "资源补给速通")
         page = self.game.wait_for_one_of(
             {"resource_confirm", "reward"}, tolerate_unknown=True
         )
         self._finish_resource_supply(page)
 
-    def _finish_resource_supply(self, page: str) -> None:
+    def _finish_resource_supply(self, page: str | Observation) -> None:
+        if self._use_v2_resource_flow():
+            observation = (
+                page
+                if isinstance(page, Observation)
+                else self.game.wait_for_state({str(page)})
+            )
+            if observation.state == "resource_confirm":
+                self.game.click_detected_control(
+                    "resource_confirm",
+                    "确认资源补给快速通关",
+                    allowed_states={"resource_confirm"},
+                    target_states={"reward"},
+                    observation=observation,
+                )
+                observation = self.game.wait_for_state({"reward"})
+            self.game.click_detected_control(
+                "dismiss_reward",
+                "关闭资源补给奖励",
+                allowed_states={"reward"},
+                target_states={"resource_dialog"},
+                observation=observation,
+            )
+            dialog = self.game.wait_for_state({"resource_dialog"})
+            self.game.click_detected_control(
+                "close_resource",
+                "关闭资源补给难度页",
+                allowed_states={"resource_dialog"},
+                target_states={"resource_hub"},
+                observation=dialog,
+            )
+            self.game.wait_for_state({"resource_hub"})
+            return
         if page == "resource_confirm":
             self.game.click_reference(
                 self.config["points"]["resource_confirm"],
@@ -2328,10 +2774,17 @@ class DailyBot:
             {"monster_invasion"},
         )
 
-    def _run_hunter_league(self) -> None:
+    def _run_hunter_league(self, match_count: int | None = None) -> None:
         points = self.config["points"]
         results = {"hunter_league_victory", "hunter_league_failure"}
-        for match_index in range(self.config["hunter_league_matches"]):
+        matches = (
+            int(self.config["hunter_league_matches"])
+            if match_count is None
+            else int(match_count)
+        )
+        if matches < 1:
+            raise SafetyStop("猎人联赛待执行场次必须大于零，已停止。")
+        for match_index in range(matches):
             self._click_until_transition(
                 points["hunter_league_match"],
                 "猎人联赛匹配战斗",
@@ -2340,16 +2793,18 @@ class DailyBot:
                 timeout=self.config["timeouts"]["battle_seconds"],
             )
             self._finish_hunter_league_result()
-            logging.info("猎人联赛已完成第 %d 场。", match_index + 1)
+            logging.info("本轮猎人联赛已完成第 %d/%d 场。", match_index + 1, matches)
         self._claim_hunter_league_rewards()
 
     def _finish_hunter_league_result(self) -> None:
-        self._click_until_transition(
+        page = self._click_until_transition(
             self.config["points"]["hunter_league_result"],
             "关闭猎人联赛战果",
             {"hunter_league_victory", "hunter_league_failure"},
-            {"hunter_league"},
+            {"hunter_league", "infinite_rank_drop"},
         )
+        if page == "infinite_rank_drop":
+            self._dismiss_infinite_rank_drop("hunter_league")
 
     def _close_hunter_league_rewards(self, page: str) -> None:
         self._click_until_transition(
@@ -2400,19 +2855,39 @@ class DailyBot:
             self._dismiss_infinite_rank_drop()
         return True
 
-    def _dismiss_infinite_rank_drop(self) -> None:
+    def _dismiss_infinite_rank_drop(
+        self, return_page: str = "infinite_mystery"
+    ) -> None:
         page = "infinite_rank_drop"
         for _ in range(self.config["infinite_rank_dismiss_max_clicks"]):
-            if page == "infinite_mystery":
+            if page == return_page:
                 return
-            self.game.click_reference(
-                self.config["points"]["infinite_rank_continue"],
-                "关闭无限秘境段位结算",
-            )
+            if all(
+                hasattr(self.game, name)
+                for name in ("wait_for_state", "click_detected_control")
+            ):
+                overlay = self.game.wait_for_state({"rank_overlay"})
+                control_names = {control.name for control in overlay.controls}
+                control_name = (
+                    "dismiss_rank_overlay"
+                    if "dismiss_rank_overlay" in control_names
+                    else "dismiss_rank_overlay_title"
+                )
+                self.game.click_detected_control(
+                    control_name,
+                    f"关闭段位结算并返回 {return_page}",
+                    allowed_states={"rank_overlay"},
+                    observation=overlay,
+                )
+            else:
+                self.game.click_reference(
+                    self.config["points"]["infinite_rank_continue"],
+                    f"关闭段位结算并返回 {return_page}",
+                )
             page = self.game.wait_for_one_of(
-                {"infinite_rank_drop", "infinite_mystery"}, tolerate_unknown=True
+                {"infinite_rank_drop", return_page}, tolerate_unknown=True
             )
-        raise SafetyStop("无限秘境段位结算未能关闭，已停止。")
+        raise SafetyStop(f"段位结算未能关闭并返回 {return_page}，已停止。")
 
     def _run_infinite_mystery(self) -> None:
         points = self.config["points"]

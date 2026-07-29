@@ -1,11 +1,13 @@
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from bot import Rect, ReferenceGeometry
+from bot import DesktopGame, Rect, ReferenceGeometry
 
 
 class ReferenceGeometryTests(unittest.TestCase):
@@ -35,6 +37,71 @@ class ReferenceGeometryTests(unittest.TestCase):
         self.assertTrue(geometry.contains((1190, 749)))
         self.assertFalse(geometry.contains((1191, 749)))
         self.assertFalse(geometry.contains((1190, 750)))
+
+
+class WindowFocusTests(unittest.TestCase):
+    def test_real_capture_focuses_window_before_reading_geometry(self):
+        events = []
+        image = object()
+        calibration = SimpleNamespace(content_top=53, generation=1)
+        game = DesktopGame.__new__(DesktopGame)
+        game.execute = True
+        game.focus = lambda: events.append("focus")
+        game._window_rect = lambda: events.append("rect") or Rect(0, 0, 1091, 700)
+        game.viewport_calibrator = SimpleNamespace(
+            ensure=lambda _size, _capture: (image, calibration, True)
+        )
+        game.config = {"reference_size": [1091, 700], "reference_content_top": 53}
+        game.cv2 = None
+        game.np = None
+        game.last_frame = None
+        game.last_observation = None
+
+        with patch("bot.normalize_frame", return_value=image), patch(
+            "bot.frame_difference", return_value=0.0
+        ):
+            game.capture_frame()
+
+        self.assertEqual(["focus", "rect"], events)
+
+    def test_title_bar_click_is_verified_when_win32_activation_is_rejected(self):
+        class Gui:
+            foreground = 0
+
+            @staticmethod
+            def ShowWindow(_handle, _mode):
+                pass
+
+            @classmethod
+            def GetForegroundWindow(cls):
+                return cls.foreground
+
+            @staticmethod
+            def SetForegroundWindow(_handle):
+                raise RuntimeError("foreground lock")
+
+        class Mouse:
+            clicks = []
+
+            @classmethod
+            def click(cls, x, y):
+                cls.clicks.append((x, y))
+                Gui.foreground = 123
+
+        game = DesktopGame.__new__(DesktopGame)
+        game.execute = True
+        game.window_handle = 123
+        game.win32gui = Gui
+        game.win32con = SimpleNamespace(SW_RESTORE=9)
+        game.pyautogui = Mouse
+        game.content_top = 53
+        game._window_rect = lambda: Rect(100, 200, 1554, 1109)
+
+        with patch("bot.time.sleep"):
+            game.focus()
+
+        self.assertEqual([(827, 225)], Mouse.clicks)
+        self.assertEqual(123, Gui.foreground)
 
 
 if __name__ == "__main__":

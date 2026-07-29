@@ -133,6 +133,37 @@ class ObservationWaitingTests(unittest.TestCase):
 
         self.assertEqual("tasks", result.state)
 
+    def test_main_consensus_allows_real_background_animation(self):
+        game = self.sequence_game(
+            [
+                self.observation("main", change=15.7),
+                self.observation("main", change=15.6),
+            ]
+        )
+
+        result = game.wait_for_state({"main"}, timeout=0.1, hard_timeout=0.2)
+
+        self.assertEqual("main", result.state)
+
+    def test_final_sampling_keeps_first_stable_frame_when_ocr_is_slow(self):
+        game = self.sequence_game([self.observation("hunter_field")], poll=0.05)
+        clock = FakeClock()
+
+        def slow_observe_frame():
+            clock.value += 0.15
+            return self.observation("hunter_field", change=0.2)
+
+        game.observe_frame = slow_observe_frame
+        with patch("bot.time.monotonic", clock.monotonic), patch(
+            "bot.time.sleep", clock.sleep
+        ):
+            result = game.wait_for_state(
+                {"hunter_field"}, timeout=0.1, hard_timeout=0.6
+            )
+
+        self.assertEqual("hunter_field", result.state)
+        self.assertLess(clock.value, 0.6)
+
     def test_transient_and_loading_frames_extend_only_to_hard_timeout(self):
         game = self.sequence_game(
             [
@@ -306,6 +337,27 @@ class ObservationWaitingTests(unittest.TestCase):
             [("home", {"tasks"}, {"main", "trial"})],
             actions,
         )
+
+    def test_recovery_returns_target_already_verified_by_action(self):
+        game = DesktopGame.__new__(DesktopGame)
+        game.config = copy.deepcopy(self.base_config)
+        calls = []
+
+        def wait_for_state(*_args, **_kwargs):
+            calls.append("wait")
+            if len(calls) > 1:
+                raise AssertionError("verified target must not be sampled again")
+            return self.observation("hunter_field")
+
+        game.wait_for_state = wait_for_state
+        game.click_detected_control = lambda *_args, **_kwargs: self.observation(
+            "main", change=64.0
+        )
+
+        result = game.recover_to_state({"main"}, hard_timeout=2.0)
+
+        self.assertEqual("main", result.state)
+        self.assertEqual(["wait"], calls)
 
     def test_recovery_dismisses_explicit_overlay_then_routes_home(self):
         game = DesktopGame.__new__(DesktopGame)

@@ -19,7 +19,7 @@
     "stable_frames": 2,
     "stable_frame_change": 6.0,
     "stable_frame_change_by_state": {
-      "main": 9.0
+      "main": 16.0
     },
     "wait": {
       "loading_extension_seconds": 4.0,
@@ -37,15 +37,23 @@
       "generic_reward": "v2",
       "main_tasks_tower": "v2",
       "main_tasks_hunter_field": "v2",
+      "main_tasks_hunter_league": "v2",
+      "main_tasks_resource_supply": "v2",
       "legacy_fallback": true
     },
     "title_regions": {
       "tasks": {"region": [165, 53, 410, 120], "aliases": ["小秘书"], "when_templates": ["tasks"]},
-      "tower": {"region": [165, 53, 410, 120], "aliases": ["无尽塔"], "when_templates": ["tower"]},
+      "tower": {"region": [165, 53, 410, 120], "aliases": ["无尽塔"], "when_templates": ["tower", "tower_manual"]},
       "tower_result": {"region": [360, 135, 715, 245], "aliases": ["快速战斗"], "when_templates": ["tower_result", "tower"], "template_gate": 0.65},
       "tower_calculating": {"region": [350, 135, 735, 285], "aliases": ["快速战斗", "正在计算挑战结果"], "when_templates": ["tower"], "template_gate": 0.65},
+      "tower_failure": {"region": [350, 220, 720, 350], "aliases": ["战斗失败"]},
       "monster": {"region": [165, 53, 410, 120], "aliases": ["魔物入侵"], "when_templates": ["monster_invasion"]},
       "hunter": {"region": [165, 53, 410, 120], "aliases": ["猎魔战场"], "when_templates": ["hunter_field"]},
+      "hunter_league": {"region": [165, 53, 410, 120], "aliases": ["猎人联赛"], "when_templates": ["hunter_league"]},
+      "resource_hub": {"region": [165, 53, 410, 120], "aliases": ["资源补给"], "when_templates": ["resource_hub"]},
+      "resource_dialog": {"region": [570, 135, 970, 245], "aliases": ["当前难度"], "when_templates": ["resource_dialog"]},
+      "rank_overview": {"region": [185, 55, 300, 110], "aliases": ["职级"], "when_templates": ["rank_overview"]},
+      "rank_tasks": {"region": [185, 55, 300, 110], "aliases": ["任务"], "when_templates": ["rank_tasks"]},
       "main_menu": {"region": [250, 53, 430, 145], "aliases": ["秘书希尔"], "when_templates": ["main"]},
       "loading_hint": {"region": [275, 575, 820, 680], "aliases": ["小秘书提示"]}
     },
@@ -68,10 +76,70 @@
       },
       {
         "name": "home",
+        "source": "references\\tower_manual.png",
+        "template_region": [118, 57, 163, 104],
+        "search_region": [95, 53, 185, 120],
+        "when_templates": ["tower", "tower_manual"],
+        "threshold": 0.72
+      },
+      {
+        "name": "home",
+        "source": "references\\resource_hub.png",
+        "template_region": [118, 57, 163, 104],
+        "search_region": [95, 53, 185, 120],
+        "when_templates": ["resource_hub", "resource_dialog"],
+        "threshold": 0.72
+      },
+      {
+        "name": "close_resource",
+        "source": "references\\resource_dialog.png",
+        "template_region": [974, 143, 1016, 191],
+        "search_region": [940, 125, 1045, 220],
+        "when_templates": ["resource_dialog"],
+        "threshold": 0.72
+      },
+      {
+        "name": "tower_exit",
+        "source": "references\\tower_post_battle.png",
+        "template_region": [25, 626, 173, 669],
+        "search_region": [0, 590, 240, 700],
+        "when_templates": ["tower_post_battle"],
+        "threshold": 0.72
+      },
+      {
+        "name": "home",
         "source": "references\\trial.png",
         "template_region": [118, 57, 163, 104],
         "search_region": [95, 53, 185, 120],
         "when_templates": ["trial"],
+        "template_gate": 0.72,
+        "threshold": 0.72
+      },
+      {
+        "name": "home",
+        "source": "references\\hunter_league.png",
+        "template_region": [118, 57, 163, 104],
+        "search_region": [95, 53, 185, 120],
+        "when_templates": ["hunter_league"],
+        "template_gate": 0.85,
+        "threshold": 0.72
+      },
+      {
+        "name": "home",
+        "source": "references\\rank_overview.png",
+        "template_region": [118, 57, 163, 104],
+        "search_region": [95, 53, 185, 120],
+        "when_templates": ["rank_overview"],
+        "template_gate": 0.9,
+        "threshold": 0.72
+      },
+      {
+        "name": "home",
+        "source": "references\\rank_tasks.png",
+        "template_region": [118, 57, 163, 104],
+        "search_region": [95, 53, 185, 120],
+        "when_templates": ["rank_tasks"],
+        "template_gate": 0.9,
         "threshold": 0.72
       }
     ],
@@ -83,6 +151,15 @@
         "aliases": {},
         "fixed": [
           {"name": "secretary", "region": [840, 55, 1005, 145], "aliases": ["小秘书"]}
+        ]
+      },
+      {
+        "region": [480, 55, 610, 150],
+        "when_templates": ["main"],
+        "colors": [],
+        "aliases": {},
+        "fixed": [
+          {"name": "rank_entry", "region": [480, 55, 610, 150], "aliases": ["职级"]}
         ]
       },
       {
@@ -111,7 +188,7 @@
       },
       {
         "region": [680, 535, 1091, 700],
-        "when_templates": ["tower"],
+        "when_templates": ["tower", "tower_manual"],
         "colors": ["gold"],
         "min_width": 100,
         "min_height": 28,
@@ -119,6 +196,77 @@
         "aliases": {
           "start_challenge": ["开始挑战"],
           "quick_challenge": ["快速挑战"]
+        }
+      },
+      {
+        "region": [360, 430, 730, 570],
+        "when_templates": ["tower_changed"],
+        "template_gate": 0.72,
+        "colors": ["gold"],
+        "min_width": 80,
+        "min_height": 28,
+        "max_height": 90,
+        "aliases": {
+          "confirm_difficulty": ["确定"]
+        }
+      },
+      {
+        "region": [360, 430, 730, 570],
+        "when_templates": ["tower_battle_confirm"],
+        "template_gate": 0.65,
+        "colors": ["gold"],
+        "min_width": 80,
+        "min_height": 28,
+        "max_height": 90,
+        "aliases": {
+          "confirm_battle": ["确定"]
+        }
+      },
+      {
+        "region": [0, 550, 240, 700],
+        "when_templates": ["tower_post_battle"],
+        "template_gate": 0.72,
+        "colors": ["blue", "cyan"],
+        "min_width": 90,
+        "min_height": 24,
+        "max_height": 90,
+        "aliases": {
+          "tower_exit": ["退出"]
+        }
+      },
+      {
+        "region": [240, 330, 550, 575],
+        "when_templates": ["resource_hub"],
+        "template_gate": 0.72,
+        "colors": [],
+        "aliases": {},
+        "fixed": [
+          {"name": "resource_magic", "region": [240, 330, 550, 575], "aliases": ["魔晶补给"]}
+        ]
+      },
+      {
+        "region": [540, 420, 1010, 560],
+        "when_templates": ["resource_dialog"],
+        "template_gate": 0.72,
+        "colors": ["blue", "cyan"],
+        "min_width": 110,
+        "min_height": 24,
+        "max_height": 90,
+        "min_color_fraction": 0.1,
+        "aliases": {
+          "resource_quick": ["快速通关", "速通上一关"]
+        }
+      },
+      {
+        "region": [500, 430, 750, 570],
+        "when_templates": ["resource_confirm"],
+        "template_gate": 0.65,
+        "colors": ["gold"],
+        "min_width": 80,
+        "min_height": 28,
+        "max_height": 90,
+        "aliases": {
+          "resource_confirm": ["确定"]
         }
       },
       {
@@ -232,12 +380,77 @@
         "fixed": [
           {"name": "dismiss_overlay", "region": [400, 625, 700, 700], "aliases": ["点击空白位置关闭界面", "点击空白区域关闭界面"]}
         ]
+      },
+      {
+        "region": [380, 515, 720, 610],
+        "colors": [],
+        "aliases": {},
+        "fixed": [
+          {"name": "dismiss_tower_failure", "region": [380, 515, 720, 610], "aliases": ["点击任意位置继续"]}
+        ]
+      },
+      {
+        "region": [350, 500, 750, 590],
+        "when_templates": ["infinite_rank_drop"],
+        "template_gate": 0.65,
+        "colors": [],
+        "aliases": {},
+        "fixed": [
+          {"name": "dismiss_rank_overlay", "region": [350, 500, 750, 590], "aliases": ["点击任意位置关闭"]}
+        ]
+      },
+      {
+        "region": [400, 100, 700, 230],
+        "when_templates": ["infinite_rank_drop"],
+        "template_gate": 0.65,
+        "colors": [],
+        "aliases": {},
+        "fixed": [
+          {"name": "dismiss_rank_overlay_title", "region": [400, 100, 700, 230], "aliases": ["段位晋升"]}
+        ]
+      },
+      {
+        "region": [900, 450, 1091, 665],
+        "when_templates": ["rank_tasks"],
+        "template_gate": 0.9,
+        "colors": ["blue"],
+        "min_width": 70,
+        "min_height": 24,
+        "max_height": 65,
+        "min_color_fraction": 0.2,
+        "aliases": {
+          "league_go": ["前往"]
+        }
+      },
+      {
+        "region": [850, 370, 1070, 500],
+        "when_templates": ["hunter_league"],
+        "template_gate": 0.85,
+        "colors": ["gold"],
+        "min_width": 90,
+        "min_height": 28,
+        "max_height": 80,
+        "min_color_fraction": 0.15,
+        "aliases": {
+          "league_match": ["匹配战斗"]
+        }
+      },
+      {
+        "region": [10, 170, 110, 255],
+        "when_templates": ["rank_overview"],
+        "template_gate": 0.9,
+        "colors": [],
+        "aliases": {},
+        "fixed": [
+          {"name": "rank_tasks_tab", "region": [10, 170, 110, 255], "aliases": ["任务"]}
+        ]
       }
     ],
     "numeric_regions": {
       "stamina": {"region": [155, 53, 260, 105], "pattern": "(\\d+)\\s*/\\s*150", "group": 1, "when_templates": ["abyss_exhausted"]},
       "loading_progress": {"region": [460, 635, 630, 700], "pattern": "(\\d+)\\s*%", "group": 1},
-      "tower_progress": {"region": [390, 180, 700, 285], "pattern": "(\\d+)\\s*%", "group": 1, "when_templates": ["tower"], "template_gate": 0.65}
+      "tower_progress": {"region": [390, 180, 700, 285], "pattern": "(\\d+)\\s*%", "group": 1, "when_templates": ["tower"], "template_gate": 0.65},
+      "hunter_league_matches": {"region": [430, 545, 690, 650], "pattern": "进度[：:]?\\s*(\\d+)\\s*/\\s*10", "group": 1, "when_templates": ["rank_tasks"]}
     },
     "state_rules": {
       "tasks": {
@@ -247,9 +460,46 @@
         "min_signals": 2
       },
       "tower_ready": {
-        "template_any": ["tower"],
+        "template_any": ["tower", "tower_manual"],
         "title_any": ["tower"],
         "control_any": ["start_challenge", "quick_challenge"],
+        "min_signals": 2
+      },
+      "tower_changed": {
+        "template_any": ["tower_changed"],
+        "control_any": ["confirm_difficulty"],
+        "min_signals": 2
+      },
+      "tower_battle_confirm": {
+        "template_any": ["tower_battle_confirm"],
+        "control_any": ["confirm_battle"],
+        "min_signals": 2
+      },
+      "tower_post_battle": {
+        "template_any": ["tower_post_battle"],
+        "control_any": ["tower_exit"],
+        "min_signals": 2
+      },
+      "tower_failure": {
+        "title_any": ["tower_failure"],
+        "control_any": ["dismiss_tower_failure"],
+        "min_signals": 2
+      },
+      "rank_overlay": {
+        "template_any": ["infinite_rank_drop"],
+        "control_any": ["dismiss_rank_overlay", "dismiss_rank_overlay_title"],
+        "min_signals": 2
+      },
+      "rank_overview": {
+        "template_any": ["rank_overview"],
+        "title_any": ["rank_overview"],
+        "control_any": ["rank_tasks_tab"],
+        "min_signals": 2
+      },
+      "rank_tasks": {
+        "template_any": ["rank_tasks"],
+        "title_any": ["rank_tasks"],
+        "numeric_any": ["hunter_league_matches"],
         "min_signals": 2
       },
       "tower_result": {
@@ -280,6 +530,29 @@
         "template_any": ["hunter_quick_available"],
         "title_any": ["hunter"],
         "control_any": ["quick_clear"],
+        "min_signals": 2
+      },
+      "hunter_league": {
+        "template_any": ["hunter_league"],
+        "title_any": ["hunter_league"],
+        "control_any": ["league_match"],
+        "min_signals": 2
+      },
+      "resource_hub": {
+        "template_any": ["resource_hub"],
+        "title_any": ["resource_hub"],
+        "control_any": ["resource_magic"],
+        "min_signals": 2
+      },
+      "resource_dialog": {
+        "template_any": ["resource_dialog"],
+        "title_any": ["resource_dialog"],
+        "control_any": ["resource_quick"],
+        "min_signals": 2
+      },
+      "resource_confirm": {
+        "template_any": ["resource_confirm"],
+        "control_any": ["resource_confirm"],
         "min_signals": 2
       },
       "hunter_failure": {
@@ -322,19 +595,39 @@
       "tasks": {"control": "home", "targets": ["main", "trial"]},
       "tower_ready": {"control": "home", "targets": ["main", "trial"]},
       "tower_result": {"control": "dismiss_result", "targets": ["tower_ready"]},
+      "tower_post_battle": {"control": "tower_exit", "targets": ["tower_ready", "trial"]},
+      "tower_failure": {"control": "dismiss_tower_failure", "targets": ["tower_ready", "trial"]},
+      "reward": {"control": "dismiss_reward", "targets": ["tower_post_battle", "resource_dialog", "resource_hub", "hunter_field", "hunter_quick_ready", "tasks", "main"]},
       "trial": {"control": "home", "targets": ["main"]},
       "dismissible_overlay": {"control": "dismiss_overlay", "targets": ["main", "tasks", "tower_ready", "trial"]},
       "hunter_field": {"control": "home", "targets": ["main", "trial"]},
-      "hunter_quick_ready": {"control": "home", "targets": ["main", "trial"]}
+      "hunter_quick_ready": {"control": "home", "targets": ["main", "trial"]},
+      "hunter_league": {"control": "home", "targets": ["main", "trial"]},
+      "resource_hub": {"control": "home", "targets": ["main", "trial"]},
+      "resource_dialog": {"control": "close_resource", "targets": ["resource_hub"]},
+      "rank_overview": {"control": "home", "targets": ["main"]},
+      "rank_tasks": {"control": "home", "targets": ["main"]}
     },
     "state_control_allowlists": {
       "tower_result": ["dismiss_result"],
+      "tower_changed": ["confirm_difficulty"],
+      "tower_ready": ["home", "start_challenge", "quick_challenge"],
+      "tower_battle_confirm": ["confirm_battle"],
+      "tower_post_battle": ["tower_exit"],
+      "tower_failure": ["dismiss_tower_failure"],
+      "rank_overlay": ["dismiss_rank_overlay", "dismiss_rank_overlay_title"],
       "dismissible_overlay": ["dismiss_overlay"],
       "hunter_field": ["home", "hunter_start", "quick_disabled"],
       "hunter_quick_ready": ["home", "quick_clear"],
+      "hunter_league": ["home", "league_match"],
       "hunter_failure": ["hunter_speed"],
       "hunter_confirm": ["hunter_confirm"],
-      "reward": ["dismiss_reward"]
+      "resource_hub": ["home", "resource_magic"],
+      "resource_dialog": ["home", "close_resource", "resource_quick"],
+      "resource_confirm": ["resource_confirm"],
+      "reward": ["dismiss_reward"],
+      "rank_overview": ["home", "rank_tasks_tab"],
+      "rank_tasks": ["home", "league_go"]
     }
   },
   "page_search_margin": [20, 14],
@@ -344,8 +637,17 @@
   "page_multi_anchor_thresholds": {"main": 0.7, "hunter_confirm": 0.75},
   "page_multi_anchor_required": {"main": 2, "hunter_confirm": 2},
   "background_pages": ["main"],
+  "page_occlusion_overrides": {
+    "tower_battle_confirm": ["tower_manual"],
+    "resource_confirm": ["hunter_confirm"]
+  },
+  "state_occlusion_overrides": {
+    "resource_confirm": ["hunter_confirm"]
+  },
   "page_thresholds": {
     "main": 0.7,
+    "tower_battle_confirm": 0.65,
+    "resource_confirm": 0.65,
     "reward": 0.72,
     "abyss_victory": 0.7,
     "abyss_cards": 0.72,
@@ -355,7 +657,8 @@
     "monster_reward": 0.72,
     "hunter_league_victory": 0.72,
     "hunter_league_failure": 0.72,
-    "infinite_rank_drop": 0.72,
+    "infinite_rank_drop": 0.65,
+    "infinite_stage": 0.72,
     "infinite_score": 0.72,
     "infinite_next": 0.72,
     "infinite_finished": 0.72,
@@ -391,6 +694,8 @@
     "resource_hub": "references\\resource_hub.png",
     "resource_dialog": "references\\resource_dialog.png",
     "resource_confirm": "references\\resource_confirm.png",
+    "rank_overview": "references\\rank_overview.png",
+    "rank_tasks": "references\\rank_tasks.png",
     "abyss": "references\\abyss.png",
     "abyss_victory": "references\\abyss_victory.png",
     "abyss_cards": "references\\abyss_cards.png",
@@ -460,6 +765,8 @@
     "resource_hub": [195, 55, 350, 105],
     "resource_dialog": [700, 170, 950, 225],
     "resource_confirm": [350, 300, 720, 440],
+    "rank_overview": [185, 55, 300, 110],
+    "rank_tasks": [185, 55, 300, 110],
     "abyss": [195, 55, 350, 105],
     "abyss_victory": [720, 170, 1020, 290],
     "abyss_cards": [450, 550, 645, 650],
@@ -578,7 +885,7 @@
     "infinite_mystery": "one"
   },
   "task_progress_threshold": 0.82,
-  "task_progress_thresholds": {"three": 0.94},
+  "task_progress_thresholds": {"three": 0.90},
   "activity_templates": {
     "20": {"source": "references\\tasks_activity.png", "region": [423, 550, 492, 630], "point": [457, 585]},
     "40": {"source": "references\\tasks_activity.png", "region": [576, 550, 645, 630], "point": [610, 585]},
@@ -626,7 +933,15 @@
   "monster_invasion_max_attempts": 5,
   "monster_exhausted_region": [795, 225, 830, 255],
   "hunter_league_matches": 10,
+  "hunter_league_progress_attempts": 3,
+  "rank_task_scroll": {
+    "from": [700, 610],
+    "to": [700, 360],
+    "duration_seconds": 0.8,
+    "search_passes": 3
+  },
   "tower_exit_max_clicks": 5,
+  "tower_reward_max_closes": 4,
   "tower_exit_retry_wait_seconds": 4,
   "transition_retry_max_clicks": 5,
   "home_return_max_clicks": 3,

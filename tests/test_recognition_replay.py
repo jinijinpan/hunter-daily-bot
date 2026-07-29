@@ -88,7 +88,7 @@ class RealScreenshotReplayTests(unittest.TestCase):
 
     def test_manifest_is_small_and_contains_runs_and_recordings(self):
         samples = self.manifest["samples"]
-        self.assertLessEqual(len(samples), 18)
+        self.assertLessEqual(len(samples), 29)
         sources = [sample["source"] for sample in samples]
         self.assertTrue(any(source.startswith("runs/") for source in sources))
         self.assertTrue(any(source.startswith("recordings/") for source in sources))
@@ -122,6 +122,11 @@ class RealScreenshotReplayTests(unittest.TestCase):
                 self.assertTrue(set(sample["forbidden_controls"]).isdisjoint(controls))
                 for name, count in sample.get("expected_control_counts", {}).items():
                     self.assertEqual(count, result["control_counts"].get(name, 0))
+                if "expected_numeric_values" in sample:
+                    self.assertEqual(
+                        sample["expected_numeric_values"],
+                        result["numeric_values"],
+                    )
                 for rect in result["control_rects"].values():
                     self.assertLess(rect[0], rect[2])
                     self.assertLess(rect[1], rect[3])
@@ -142,6 +147,145 @@ class RealScreenshotReplayTests(unittest.TestCase):
         ]
         self.assertEqual(1, len(dismiss))
         self.assertEqual("ocr", dismiss[0].source)
+
+    def test_milestone4r_resource_button_uses_ocr_and_outline_rectangle(self):
+        sample = next(
+            item for item in self.manifest["samples"]
+            if item["file"] == "milestone4r-resource-dialog.png"
+        )
+        result = replay_sample(
+            sample, FIXTURE_DIR, self.config, self.matcher, self.engine
+        )
+
+        self.assertEqual("resource_dialog", result["state"])
+        x1, y1, x2, y2 = result["control_rects"]["resource_quick"]
+        self.assertLessEqual(abs(x1 - 693), 3)
+        self.assertLessEqual(abs(y1 - 474), 3)
+        self.assertGreaterEqual(x2 - x1, 145)
+        self.assertGreaterEqual(y2 - y1, 38)
+
+    def test_real_tower_battle_confirmation_detects_actual_button(self):
+        sample = next(
+            item for item in self.manifest["samples"]
+            if item["file"] == "milestone4r-tower-battle-confirm.webp"
+        )
+        result = replay_sample(
+            sample, FIXTURE_DIR, self.config, self.matcher, self.engine
+        )
+
+        self.assertEqual("tower_battle_confirm", result["state"])
+        x1, y1, x2, y2 = result["control_rects"]["confirm_battle"]
+        self.assertLessEqual(abs(x1 - 573), 3)
+        self.assertLessEqual(abs(y1 - 483), 3)
+        self.assertGreaterEqual(x2 - x1, 110)
+        self.assertGreaterEqual(y2 - y1, 38)
+
+    def test_real_tower_failure_detects_continue_instruction(self):
+        sample = next(
+            item for item in self.manifest["samples"]
+            if item["file"] == "milestone4r-tower-failure.webp"
+        )
+        result = replay_sample(
+            sample, FIXTURE_DIR, self.config, self.matcher, self.engine
+        )
+
+        self.assertEqual("tower_failure", result["state"])
+        self.assertIn("dismiss_tower_failure", result["controls"])
+
+    def test_real_resource_confirmation_overrides_similar_hunter_prompt(self):
+        sample = next(
+            item for item in self.manifest["samples"]
+            if item["file"] == "milestone4r-resource-confirm.webp"
+        )
+        result = replay_sample(
+            sample, FIXTURE_DIR, self.config, self.matcher, self.engine
+        )
+
+        self.assertEqual("resource_confirm", result["legacy_page"])
+        self.assertEqual("resource_confirm", result["state"])
+        self.assertIn("resource_confirm", result["controls"])
+        self.assertNotIn("hunter_confirm", result["controls"])
+
+    def test_real_rank_overlay_detects_actual_dismiss_instruction(self):
+        sample = next(
+            item for item in self.manifest["samples"]
+            if item["file"] == "milestone4r-rank-overlay.webp"
+        )
+        result = replay_sample(
+            sample, FIXTURE_DIR, self.config, self.matcher, self.engine
+        )
+
+        self.assertEqual("rank_overlay", result["state"])
+        self.assertIn("dismiss_rank_overlay", result["controls"])
+
+    def test_rank_overlay_without_instruction_detects_title_fallback(self):
+        sample = next(
+            item for item in self.manifest["samples"]
+            if item["file"] == "milestone4r-rank-overlay-title.webp"
+        )
+        result = replay_sample(
+            sample, FIXTURE_DIR, self.config, self.matcher, self.engine
+        )
+
+        self.assertEqual("rank_overlay", result["state"])
+        self.assertIn("dismiss_rank_overlay_title", result["controls"])
+        self.assertNotIn("dismiss_rank_overlay", result["controls"])
+
+    def test_rank_tasks_reads_authoritative_hunter_league_progress(self):
+        sample = next(
+            item for item in self.manifest["samples"]
+            if item["file"] == "milestone4r-rank-tasks-3-of-10.webp"
+        )
+        result = replay_sample(
+            sample, FIXTURE_DIR, self.config, self.matcher, self.engine
+        )
+
+        self.assertEqual("rank_tasks", result["state"])
+        self.assertEqual({"hunter_league_matches": 3}, result["numeric_values"])
+        self.assertEqual(2, result["control_counts"]["league_go"])
+
+    def test_rank_overview_detects_task_tab_and_home(self):
+        sample = next(
+            item for item in self.manifest["samples"]
+            if item["file"] == "milestone4r-rank-overview.webp"
+        )
+        result = replay_sample(
+            sample, FIXTURE_DIR, self.config, self.matcher, self.engine
+        )
+
+        self.assertEqual("rank_overview", result["state"])
+        self.assertIn("rank_tasks_tab", result["controls"])
+        self.assertIn("home", result["controls"])
+
+    def test_resource_confirmation_and_tower_exit_are_detected_controls(self):
+        cases = [
+            (
+                "resource_confirm.png",
+                "resource_confirm",
+                "resource_confirm",
+                "color+ocr",
+            ),
+            (
+                "tower_post_battle.png",
+                "tower_post_battle",
+                "tower_exit",
+                "template",
+            ),
+        ]
+        for file_name, expected_state, control_name, expected_source in cases:
+            with self.subTest(file=file_name):
+                image = cv2.imdecode(
+                    np.fromfile(ROOT / "references" / file_name, dtype=np.uint8),
+                    cv2.IMREAD_COLOR,
+                )
+                _legacy_page, scores = self.matcher.detect_page(image)
+                observation = self.engine.observe(image, template_scores=scores)
+                controls = {
+                    control.name: control for control in observation.controls
+                }
+                self.assertEqual(expected_state, observation.state)
+                self.assertIn(control_name, controls)
+                self.assertEqual(expected_source, controls[control_name].source)
 
     def test_explicit_dismiss_instruction_is_the_only_exposed_control(self):
         sample = next(

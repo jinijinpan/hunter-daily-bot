@@ -86,6 +86,7 @@ def replay_sample(
         "legacy_score": round(float(offline_scores.get(offline_page, 0.0)), 6),
         "state": observation.state,
         "state_confidence": observation.state_confidence,
+        "numeric_values": dict(sorted(observation.numeric_values.items())),
         "controls": sorted({control.name for control in observation.controls}),
         "control_counts": dict(
             sorted(Counter(control.name for control in observation.controls).items())

@@ -238,6 +238,15 @@
       "forbidden_controls": ["dismiss_rank_overlay", "dismiss_reward", "dismiss_result"]
     },
     {
+      "file": "milestone5a-rank-drop.webp",
+      "source": "runs/20260730-075209/timeout-state-rank_overlay-normalized.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "infinite_rank_drop",
+      "expected_state": "rank_overlay",
+      "required_controls": ["dismiss_rank_overlay_title"],
+      "forbidden_controls": ["dismiss_rank_overlay", "dismiss_reward", "dismiss_result"]
+    },
+    {
       "file": "milestone4r-rank-overview.webp",
       "source": "runs/20260729-215344/inspect-rank_overview-raw.png",
       "expected_content_top": 53,
@@ -268,6 +277,16 @@
       "forbidden_controls": ["rank_entry", "rank_tasks_tab", "league_go", "league_match"],
       "expected_control_counts": {"home": 1},
       "expected_numeric_values": {"hunter_league_matches": 10}
+    },
+    {
+      "file": "milestone5a-ladder-reward-panel.png",
+      "source": "runs/20260729-234438/startup-unknown-normalized.png",
+      "expected_content_top": 53,
+      "expected_legacy_page": "unknown",
+      "expected_state": "ladder_reward_panel",
+      "required_controls": ["close_reward_panel"],
+      "forbidden_controls": ["dismiss_reward", "claim", "go"],
+      "expected_control_counts": {"close_reward_panel": 1}
     }
   ]
 }

@@ -896,6 +896,15 @@ class RecognitionEngine:
                 score = max((observation.title_candidates.get(name, 0.0) for name in title_names), default=0.0)
                 if score >= float(rule.get("title_threshold", 0.55)):
                     signals["title"] = score
+            required_titles = rule.get("title_all", [])
+            if required_titles:
+                threshold = float(rule.get("title_threshold", 0.55))
+                scores = [
+                    observation.title_candidates.get(name, 0.0)
+                    for name in required_titles
+                ]
+                if scores and all(score >= threshold for score in scores):
+                    signals["title_all"] = sum(scores) / len(scores)
             control_names = rule.get("control_any", [])
             if control_names:
                 score = max((control_scores.get(name, 0.0) for name in control_names), default=0.0)

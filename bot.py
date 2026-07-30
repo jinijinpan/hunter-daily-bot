@@ -232,9 +232,44 @@ class DesktopGame:
             "Win32 激活被系统拒绝，尝试单击窗口标题栏后验证前台句柄：%s",
             (title_x, title_y),
         )
-        self.pyautogui.click(title_x, title_y)
-        time.sleep(0.4)
-        if self.win32gui.GetForegroundWindow() != self.window_handle:
+        flags = (
+            self.win32con.SWP_NOMOVE
+            | self.win32con.SWP_NOSIZE
+            | self.win32con.SWP_NOACTIVATE
+        )
+        foreground_verified = False
+        try:
+            self.win32gui.SetWindowPos(
+                self.window_handle,
+                self.win32con.HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                flags,
+            )
+            self.pyautogui.click(title_x, title_y)
+            time.sleep(0.4)
+            foreground_verified = (
+                self.win32gui.GetForegroundWindow() == self.window_handle
+            )
+        except Exception as exc:
+            last_error = exc
+        finally:
+            try:
+                self.win32gui.SetWindowPos(
+                    self.window_handle,
+                    self.win32con.HWND_NOTOPMOST,
+                    0,
+                    0,
+                    0,
+                    0,
+                    flags,
+                )
+            except Exception as exc:
+                last_error = exc
+                foreground_verified = False
+        if not foreground_verified:
             raise SafetyStop("无法激活小游戏窗口，请手动点一下窗口后重试。") from last_error
 
     def _grab_window(self):
@@ -946,10 +981,16 @@ class DesktopGame:
             )
             self.focus()
             current = self.wait_for_state(
-                source_states,
+                source_states | targets,
                 timeout=action_timeout,
                 hard_timeout=action_hard_timeout,
             )
+            if current.state in targets:
+                logging.info(
+                    "动作在重试前已延迟到达目标状态 %s，不再重复点击。",
+                    current.state,
+                )
+                return current
         self.save_diagnostic(f"action-failed-{name}")
         raise SafetyStop(f"{label} 在 {max_attempts} 次可信点击后仍无可验证结果，已停止。")
 
@@ -1701,6 +1742,7 @@ class DailyBot:
         return completed
 
     def _run_character_cycles(self) -> None:
+        adapters = self._configured_task_adapters()
         cycle_count = int(self.config.get("character_cycle_count", 1))
         available_count = len(self.config["character_row_points"])
         if not 1 <= cycle_count <= available_count:
@@ -1711,6 +1753,20 @@ class DailyBot:
             logging.info("开始处理第 %d/%d 个角色的小秘书任务。", role_index + 1, cycle_count)
             self._run_captured_tasks()
             self._open_daily_tasks()
+            completed_tasks = self._scan_completed_tasks(adapters)
+            logging.info(
+                "小秘书任务结束复核：已完成 %d/%d 项。",
+                len(completed_tasks),
+                len(adapters),
+            )
+            if completed_tasks != set(adapters):
+                incomplete = [task for task in adapters if task not in completed_tasks]
+                raise SafetyStop(
+                    "小秘书任务结束复核未达到 "
+                    f"{len(adapters)}/{len(adapters)}，未完成："
+                    + "、".join(incomplete)
+                    + "。未领取奖励，已停止。"
+                )
             self._claim_task_rewards()
             self.game.save_diagnostic(f"tasks-finished-role-{role_index + 1}")
             self._return_home_v2()
@@ -1860,6 +1916,11 @@ class DailyBot:
             observation = self.game.wait_for_state({initial_state})
 
         if observation.state == "rank_overview":
+            if "rank_tasks_tab" not in {
+                control.name for control in observation.controls
+            }:
+                logging.info("职级页首帧未检测到任务标签，等待稳定帧后再识别。")
+                observation = self.game.wait_for_state({"rank_overview"})
             observation = self.game.click_detected_control(
                 "rank_tasks_tab",
                 "打开职级任务",
@@ -1960,10 +2021,18 @@ class DailyBot:
             "league_go",
             "从职级任务进入猎人联赛",
             allowed_states={"rank_tasks"},
-            target_states={"hunter_league"},
+            target_states={"hunter_league", "reward"},
             observation=observation,
             preferred_point=preferred,
         )
+        if transition.state == "reward":
+            transition = self.game.click_detected_control(
+                "dismiss_reward",
+                "关闭猎人联赛积分变动",
+                allowed_states={"reward"},
+                target_states={"hunter_league"},
+                observation=transition,
+            )
         if transition.state != "hunter_league":
             self.game.wait_for_state({"hunter_league"})
 
@@ -2675,6 +2744,7 @@ class DailyBot:
     ) -> str:
         max_clicks = self.config["abyss_page_action_max_clicks"]
         timeout = self.config["abyss_page_action_retry_seconds"]
+        transition_states = {"loading", "unknown", "unknown_transient"}
         for attempt in range(1, max_clicks + 1):
             self.game.click_reference(point, label)
             try:
@@ -2684,12 +2754,37 @@ class DailyBot:
                     tolerate_unknown=True,
                 )
             except PageTimeout:
-                logging.warning(
-                    "深渊页面 %s 点击后仍未切换，第 %d/%d 次重试。",
-                    current_page,
-                    attempt,
-                    max_clicks,
-                )
+                observation = self.game.observe_frame()
+                if observation.state in transition_states:
+                    logging.info(
+                        "深渊页面 %s 点击后处于过渡状态 %s，停止点击并等待下一页。",
+                        current_page,
+                        observation.state,
+                    )
+                    try:
+                        return self.game.wait_for_one_of(
+                            next_pages,
+                            timeout=self.config["timeouts"]["battle_seconds"],
+                            tolerate_unknown=True,
+                        )
+                    except PageTimeout:
+                        pass
+
+                legacy_page, scores = self.game.detect_page()
+                if legacy_page != current_page:
+                    self.game.save_diagnostic(f"abyss-transition-{current_page}")
+                    raise SafetyStop(
+                        f"深渊页面 {current_page} 点击后未进入预期下一页；"
+                        f"V2={observation.state}，legacy={legacy_page}，"
+                        f"匹配分数={scores}。未知页面未再次点击，已停止。"
+                    )
+                if attempt < max_clicks:
+                    logging.warning(
+                        "深渊页面 %s 已由 legacy 再次确认，第 %d/%d 次安全重试。",
+                        current_page,
+                        attempt + 1,
+                        max_clicks,
+                    )
         raise SafetyStop(
             f"深渊页面 {current_page} 连续点击 {max_clicks} 次后仍未切换，已停止。"
         )
@@ -2748,13 +2843,16 @@ class DailyBot:
         )
 
     def _finish_monster_match(self) -> None:
-        self._click_until_transition(
+        page = self._click_until_transition(
             self.config["points"]["monster_match"],
             "魔物入侵快速匹配",
             {"monster_match"},
-            {"monster_result"},
+            {"monster_result", "monster_invasion"},
             timeout=self.config["timeouts"]["battle_seconds"],
         )
+        if page == "monster_invasion":
+            logging.info("魔物入侵战斗后已直接返回关卡页，未出现中间结算层。")
+            return
         self._finish_monster_result()
 
     def _finish_monster_result(self) -> None:

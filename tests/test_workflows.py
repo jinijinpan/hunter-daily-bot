@@ -845,6 +845,35 @@ class CapturedWorkflowTests(unittest.TestCase):
 
         self.assertEqual([{"main"}], recoveries)
 
+    def test_ladder_reward_panel_startup_recovers_before_single_character_workflow(self):
+        game = FakeGame(detected_page="unknown")
+        game.wait_for_state = lambda *_args, **_kwargs: None
+        game.click_detected_control = lambda *_args, **_kwargs: None
+        events = []
+
+        def recover(expected, **_kwargs):
+            events.append(("recover", set(expected), "close_reward_panel"))
+            return Observation(
+                timestamp=1.0,
+                viewport=(0, 0, 1091, 700),
+                state="main",
+                state_confidence=0.95,
+            )
+
+        game.recover_to_state = recover
+        config = copy.deepcopy(self.config)
+        config["character_cycle_count"] = 1
+        bot = DailyBot(game, config, resume=True)
+        bot._run_character_cycles = lambda: events.append(("workflow", 1))
+        bot._report_unimplemented_tasks = lambda: None
+
+        bot.run()
+
+        self.assertEqual(
+            [("recover", {"main"}, "close_reward_panel"), ("workflow", 1)],
+            events,
+        )
+
     def test_tower_confirms_changed_difficulty_before_continuing(self):
         game = FakeGame(["tower_changed", "tower"])
         bot = DailyBot(game, self.config)
@@ -1260,7 +1289,13 @@ class CapturedWorkflowTests(unittest.TestCase):
         self.assertEqual("abyss", game.waits[-1])
 
     def test_abyss_retries_victory_continue_until_page_changes(self):
-        game = FakeGame(
+        class TransitionGame(FakeGame):
+            def observe_frame(self):
+                return Observation(
+                    1.0, (0, 0, 1091, 700), state="reward", state_confidence=0.99
+                )
+
+        game = TransitionGame(
             [
                 "abyss_victory",
                 PageTimeout("victory did not change"),
@@ -1269,7 +1304,8 @@ class CapturedWorkflowTests(unittest.TestCase):
                 "abyss_finished",
                 "stamina_get",
                 "abyss",
-            ]
+            ],
+            detected_page="abyss_victory",
         )
 
         DailyBot(game, self.config)._run_abyss()
@@ -1279,7 +1315,21 @@ class CapturedWorkflowTests(unittest.TestCase):
         self.assertEqual([continue_point, continue_point], continue_clicks)
 
     def test_abyss_retries_cards_skip_and_reward_close(self):
-        game = FakeGame(
+        class TransitionGame(FakeGame):
+            def __init__(self, *args, detected_pages, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.detected_pages = iter(detected_pages)
+
+            def observe_frame(self):
+                return Observation(
+                    1.0, (0, 0, 1091, 700), state="reward", state_confidence=0.99
+                )
+
+            def detect_page(self):
+                page = next(self.detected_pages)
+                return page, {page: 1.0}
+
+        game = TransitionGame(
             [
                 "abyss_victory",
                 "abyss_cards",
@@ -1289,7 +1339,8 @@ class CapturedWorkflowTests(unittest.TestCase):
                 "abyss_finished",
                 "stamina_get",
                 "abyss",
-            ]
+            ],
+            detected_pages=["abyss_cards", "reward"],
         )
 
         DailyBot(game, self.config)._run_abyss()
@@ -1297,6 +1348,58 @@ class CapturedWorkflowTests(unittest.TestCase):
         labels = [label for _point, label in game.clicks]
         self.assertEqual(2, labels.count("跳过深渊翻牌"))
         self.assertEqual(2, labels.count("关闭深渊奖励"))
+
+    def test_abyss_reward_transition_waits_without_clicking_again(self):
+        class TransitionGame(FakeGame):
+            def observe_frame(self):
+                return Observation(
+                    1.0,
+                    (0, 0, 1091, 700),
+                    state="unknown_transient",
+                    state_confidence=0.9,
+                    frame_change=13.5,
+                )
+
+            def detect_page(self):
+                raise AssertionError("successful transition must not recheck legacy page")
+
+        game = TransitionGame(
+            [PageTimeout("reward animation"), "abyss_victory"]
+        )
+
+        page = DailyBot(game, self.config)._advance_abyss_page(
+            "reward",
+            self.config["points"]["overlay_continue"],
+            "关闭深渊奖励",
+            {"abyss_victory", "abyss_finished"},
+        )
+
+        self.assertEqual("abyss_victory", page)
+        self.assertEqual(1, len(game.clicks))
+        self.assertEqual(2, len(game.waits))
+
+    def test_abyss_unknown_stable_page_stops_without_guessing_click(self):
+        class UnknownGame(FakeGame):
+            def observe_frame(self):
+                return Observation(
+                    1.0, (0, 0, 1091, 700), state="unknown", state_confidence=0.0
+                )
+
+        game = UnknownGame(
+            [PageTimeout("short wait"), PageTimeout("battle wait")],
+            detected_page="unknown",
+        )
+
+        with self.assertRaisesRegex(SafetyStop, "未知页面未再次点击"):
+            DailyBot(game, self.config)._advance_abyss_page(
+                "reward",
+                self.config["points"]["overlay_continue"],
+                "关闭深渊奖励",
+                {"abyss_victory", "abyss_finished"},
+            )
+
+        self.assertEqual(1, len(game.clicks))
+        self.assertEqual(["abyss-transition-reward"], game.diagnostics)
 
     def test_abyss_accepts_next_victory_when_countdown_skips_finished_page(self):
         game = FakeGame(
@@ -1478,6 +1581,20 @@ class CapturedWorkflowTests(unittest.TestCase):
         ]
         self.assertEqual(expected, [list(point) for point, _label in game.clicks])
 
+    def test_monster_match_accepts_direct_return_to_stage(self):
+        game = FakeGame(["monster_invasion"])
+
+        DailyBot(game, self.config)._finish_monster_match()
+
+        self.assertEqual(
+            [self.config["points"]["monster_match"]],
+            [list(point) for point, _label in game.clicks],
+        )
+        self.assertEqual(
+            [("monster_invasion", "monster_result")],
+            game.waits,
+        )
+
     def test_monster_reward_retries_until_countdown_closes(self):
         game = FakeGame(
             [
@@ -1581,6 +1698,55 @@ class CapturedWorkflowTests(unittest.TestCase):
         self.assertEqual([("league_go", (548, 584))], game.actions)
         self.assertEqual(["hunter-league-complete"], game.diagnostics)
 
+    def test_v2_hunter_league_dismisses_score_change_before_matches(self):
+        class ProgressGame:
+            def __init__(self):
+                self.actions = []
+                self.diagnostics = []
+
+            def click_detected_control(self, name, _label, **kwargs):
+                self.actions.append((name, set(kwargs["target_states"])))
+                if name == "league_go":
+                    return Observation(
+                        1.0,
+                        (0, 0, 1091, 700),
+                        state="reward",
+                        state_confidence=0.99,
+                        controls=[
+                            DetectedControl(
+                                "dismiss_reward", (480, 613, 614, 634), 0.99, "ocr"
+                            )
+                        ],
+                    )
+                return Observation(
+                    1.0,
+                    (0, 0, 1091, 700),
+                    state="hunter_league",
+                    state_confidence=0.99,
+                )
+
+            def save_diagnostic(self, name):
+                self.diagnostics.append(name)
+
+        game = ProgressGame()
+        bot = DailyBot(game, self.config)
+        observations = [
+            self._rank_tasks_observation(9),
+            self._rank_tasks_observation(10),
+        ]
+        bot._open_rank_tasks = lambda _initial=None, **_kwargs: observations.pop(0)
+        bot._run_hunter_league = lambda _count=None: None
+        bot._return_home_v2 = lambda: None
+
+        self.assertTrue(bot._complete_hunter_league_matches())
+        self.assertEqual(
+            [
+                ("league_go", {"hunter_league", "reward"}),
+                ("dismiss_reward", {"hunter_league"}),
+            ],
+            game.actions,
+        )
+
     def test_v2_hunter_league_rejects_incomplete_post_run_progress(self):
         class ProgressGame:
             def __init__(self):
@@ -1625,6 +1791,17 @@ class CapturedWorkflowTests(unittest.TestCase):
             state="rank_overview",
             state_confidence=0.99,
         )
+        stable_overview = Observation(
+            timestamp=2.0,
+            viewport=(0, 0, 1091, 700),
+            state="rank_overview",
+            state_confidence=0.99,
+            controls=[
+                DetectedControl(
+                    "rank_tasks_tab", (26, 208, 70, 232), 0.99, "ocr"
+                )
+            ],
+        )
         tasks = self._rank_tasks_observation(3)
         tasks_transition = self._rank_tasks_observation(3)
         tasks_transition.numeric_values = {}
@@ -1643,6 +1820,8 @@ class CapturedWorkflowTests(unittest.TestCase):
 
             def wait_for_state(self, expected, **_kwargs):
                 self.actions.append(("wait", set(expected)))
+                if set(expected) == {"rank_overview"}:
+                    return stable_overview
                 return tasks
 
             def drag_reference(self, *_args, **_kwargs):
@@ -1656,6 +1835,7 @@ class CapturedWorkflowTests(unittest.TestCase):
             [
                 ("recover", {"main"}),
                 ("rank_entry", {"main"}),
+                ("wait", {"rank_overview"}),
                 ("rank_tasks_tab", {"rank_overview"}),
                 ("wait", {"rank_tasks"}),
             ],
@@ -1747,6 +1927,82 @@ class CapturedWorkflowTests(unittest.TestCase):
             ],
             [list(point) for point, _label in game.clicks],
         )
+
+    def test_rank_drop_uses_detected_title_center_and_returns_to_mystery(self):
+        overlay = Observation(
+            timestamp=1.0,
+            viewport=(0, 0, 1091, 700),
+            state="rank_overlay",
+            state_confidence=0.99,
+            controls=[
+                DetectedControl(
+                    "dismiss_rank_overlay_title",
+                    (480, 145, 612, 188),
+                    0.99,
+                    "ocr",
+                )
+            ],
+        )
+
+        class RankDropGame:
+            def __init__(self):
+                self.actions = []
+
+            def wait_for_state(self, expected, **_kwargs):
+                self.actions.append(("wait_state", set(expected)))
+                return overlay
+
+            def click_detected_control(self, name, _label, **kwargs):
+                x1, y1, x2, y2 = kwargs["observation"].controls[0].rect
+                self.actions.append(
+                    (
+                        "click",
+                        name,
+                        ((x1 + x2) // 2, (y1 + y2) // 2),
+                        set(kwargs["allowed_states"]),
+                    )
+                )
+
+            def wait_for_one_of(self, expected, **_kwargs):
+                self.actions.append(("wait_page", set(expected)))
+                return "infinite_mystery"
+
+        game = RankDropGame()
+        DailyBot(game, self.config)._dismiss_infinite_rank_drop()
+
+        self.assertEqual(
+            [
+                ("wait_state", {"rank_overlay"}),
+                (
+                    "click",
+                    "dismiss_rank_overlay_title",
+                    (546, 166),
+                    {"rank_overlay"},
+                ),
+                (
+                    "wait_page",
+                    {"infinite_rank_drop", "infinite_mystery"},
+                ),
+            ],
+            game.actions,
+        )
+
+    def test_unrecognized_rank_drop_never_clicks(self):
+        class UnknownRankDropGame:
+            def __init__(self):
+                self.clicks = []
+
+            def wait_for_state(self, _expected, **_kwargs):
+                raise PageTimeout("rank overlay not recognized")
+
+            def click_detected_control(self, name, *_args, **_kwargs):
+                self.clicks.append(name)
+
+        game = UnknownRankDropGame()
+        with self.assertRaises(PageTimeout):
+            DailyBot(game, self.config)._dismiss_infinite_rank_drop()
+
+        self.assertEqual([], game.clicks)
 
     def test_infinite_mystery_dismisses_rank_drop_and_runs_three_stages(self):
         game = FakeGame(
@@ -1940,6 +2196,7 @@ class CapturedWorkflowTests(unittest.TestCase):
         events = []
         bot._run_captured_tasks = lambda: events.append("tasks")
         bot._open_daily_tasks = lambda: events.append("open")
+        bot._scan_completed_tasks = lambda adapters: set(adapters)
         bot._claim_task_rewards = lambda: events.append("claim")
         bot._return_home = lambda: events.append("home")
         bot._switch_to_next_character = lambda: events.append("switch")
@@ -1958,6 +2215,22 @@ class CapturedWorkflowTests(unittest.TestCase):
             ["tasks-finished-role-1", "tasks-finished-role-2", "tasks-finished-role-3"],
             game.diagnostics,
         )
+
+    def test_character_cycle_stops_before_claim_when_final_scan_is_incomplete(self):
+        config = copy.deepcopy(self.config)
+        config["character_cycle_count"] = 1
+        game = FakeGame()
+        bot = DailyBot(game, config)
+        events = []
+        bot._run_captured_tasks = lambda: events.append("tasks")
+        bot._open_daily_tasks = lambda: events.append("open")
+        bot._scan_completed_tasks = lambda adapters: set(adapters[:-1])
+        bot._claim_task_rewards = lambda: events.append("claim")
+
+        with self.assertRaisesRegex(SafetyStop, "结束复核未达到 7/7"):
+            bot._run_character_cycles()
+
+        self.assertEqual(["tasks", "open"], events)
 
     def test_ladder_is_explicitly_excluded(self):
         self.assertNotIn("ladder", self.config["captured_task_adapters"])

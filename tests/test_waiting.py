@@ -271,6 +271,37 @@ class ObservationWaitingTests(unittest.TestCase):
         self.assertEqual("main", result.state)
         self.assertEqual([(20, 30)], clicks)
 
+    def test_click_accepts_delayed_target_before_retrying_source_control(self):
+        control = DetectedControl("home", (10, 20, 30, 40), 0.99, "template")
+        source = self.observation("tasks", controls=[control])
+        target = self.observation("main", change=9.0)
+        game = self.sequence_game([target])
+        game.execute = True
+        game.geometry = SimpleNamespace(point=lambda point: point)
+        clicks = []
+        game.pyautogui = SimpleNamespace(click=lambda *point: clicks.append(point))
+        game.focus = lambda: None
+        game._verify_detected_click = lambda *_args, **_kwargs: None
+        waited_for = []
+
+        def wait_for_state(expected, **_kwargs):
+            waited_for.append(set(expected))
+            return target
+
+        game.wait_for_state = wait_for_state
+
+        result = game.click_detected_control(
+            "home",
+            "返回主界面",
+            allowed_states={"tasks"},
+            target_states={"main", "trial"},
+            observation=source,
+        )
+
+        self.assertEqual("main", result.state)
+        self.assertEqual([{"tasks", "main", "trial"}], waited_for)
+        self.assertEqual([(20, 30)], clicks)
+
     def test_click_verifies_original_claim_disappeared_when_other_claims_remain(self):
         original = DetectedControl("claim", (10, 20, 30, 40), 0.99, "color+ocr")
         other = DetectedControl("claim", (110, 20, 130, 40), 0.98, "color+ocr")
@@ -392,6 +423,64 @@ class ObservationWaitingTests(unittest.TestCase):
             ],
             actions,
         )
+
+    def test_recovery_closes_ladder_reward_panel_and_waits_through_transients(self):
+        close = DetectedControl(
+            "close_reward_panel", (922, 130, 960, 178), 0.99, "template"
+        )
+        panel = self.observation("ladder_reward_panel", controls=[close])
+        game = self.sequence_game(
+            [
+                panel,
+                panel,
+                self.observation("unknown_transient", change=20.0),
+                self.observation("loading", change=18.0),
+                self.observation("unknown_transient", change=12.0),
+                self.observation("main"),
+                self.observation("main"),
+            ]
+        )
+        clicks = []
+        game.execute = True
+        game.geometry = SimpleNamespace(point=lambda point: point)
+        game.pyautogui = SimpleNamespace(click=lambda *point: clicks.append(point))
+        game.focus = lambda: None
+
+        result = game.recover_to_state({"main"}, hard_timeout=2.0)
+
+        self.assertEqual("main", result.state)
+        self.assertEqual([(941, 154)], clicks)
+
+    def test_ladder_reward_panel_close_failure_stops_at_retry_limit(self):
+        close = DetectedControl(
+            "close_reward_panel", (922, 130, 960, 178), 0.99, "template"
+        )
+        panel = self.observation("ladder_reward_panel", controls=[close])
+        game = self.sequence_game([panel], poll=0.05)
+        game.config["recognition_v2"]["wait"]["action_timeout_seconds"] = 0.1
+        game.config["recognition_v2"]["wait"]["action_hard_timeout_seconds"] = 0.15
+        game.config["recognition_v2"]["wait"]["action_max_retries"] = 2
+        clicks = []
+        game.execute = True
+        game.geometry = SimpleNamespace(point=lambda point: point)
+        game.pyautogui = SimpleNamespace(click=lambda *point: clicks.append(point))
+        game.focus = lambda: None
+        clock = FakeClock()
+
+        with patch("bot.time.monotonic", clock.monotonic), patch(
+            "bot.time.sleep", clock.sleep
+        ):
+            with self.assertRaisesRegex(SafetyStop, "2 次可信点击"):
+                game.click_detected_control(
+                    "close_reward_panel",
+                    "关闭天梯奖励面板",
+                    allowed_states={"ladder_reward_panel"},
+                    target_states={"main", "hunter_league", "trial"},
+                    observation=panel,
+                )
+
+        self.assertEqual([(941, 154), (941, 154)], clicks)
+        self.assertIn("action-failed-close_reward_panel", game.diagnostics)
 
     def test_unknown_state_recovery_times_out_without_clicking(self):
         game = self.sequence_game([self.observation("unknown")], poll=0.05)

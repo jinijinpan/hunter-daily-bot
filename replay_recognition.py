@@ -94,6 +94,16 @@ def replay_sample(
         "control_rects": {
             control.name: list(control.rect) for control in observation.controls
         },
+        "control_sources": {
+            name: sorted(
+                {
+                    control.source
+                    for control in observation.controls
+                    if control.name == name
+                }
+            )
+            for name in sorted({control.name for control in observation.controls})
+        },
     }
 
 

@@ -55,9 +55,28 @@
       "rank_overview": {"region": [185, 55, 300, 110], "aliases": ["职级"], "when_templates": ["rank_overview"]},
       "rank_tasks": {"region": [185, 55, 300, 110], "aliases": ["任务"], "when_templates": ["rank_tasks"]},
       "main_menu": {"region": [250, 53, 430, 145], "aliases": ["秘书希尔"], "when_templates": ["main"]},
+      "ladder_reward_panel_title": {"region": [450, 110, 650, 195], "aliases": ["奖励"]},
+      "ladder_reward_panel_daily": {"region": [120, 185, 325, 260], "aliases": ["每日奖励"]},
+      "ladder_reward_panel_settlement": {"region": [120, 255, 325, 330], "aliases": ["结算奖励"]},
       "loading_hint": {"region": [275, 575, 820, 680], "aliases": ["小秘书提示"]}
     },
     "template_controls": [
+      {
+        "name": "close_reward_panel",
+        "source": "tests\\fixtures\\recognition\\milestone5a-ladder-reward-panel.png",
+        "template_region": [922, 130, 960, 178],
+        "search_region": [895, 105, 985, 210],
+        "threshold": 0.72
+      },
+      {
+        "name": "rank_tasks_tab",
+        "source": "references\\rank_overview.png",
+        "template_region": [25, 198, 72, 232],
+        "search_region": [5, 180, 110, 250],
+        "when_templates": ["rank_overview"],
+        "template_gate": 0.85,
+        "threshold": 0.82
+      },
       {
         "name": "home",
         "source": "references\\tasks.png",
@@ -406,7 +425,7 @@
         "colors": [],
         "aliases": {},
         "fixed": [
-          {"name": "dismiss_rank_overlay_title", "region": [400, 100, 700, 230], "aliases": ["段位晋升"]}
+          {"name": "dismiss_rank_overlay_title", "region": [400, 100, 700, 230], "aliases": ["段位晋升", "段位下降"]}
         ]
       },
       {
@@ -565,6 +584,11 @@
         "control_any": ["hunter_confirm"],
         "min_signals": 2
       },
+      "ladder_reward_panel": {
+        "title_all": ["ladder_reward_panel_title", "ladder_reward_panel_daily", "ladder_reward_panel_settlement"],
+        "control_any": ["close_reward_panel"],
+        "min_signals": 2
+      },
       "reward": {
         "template_any": ["reward"],
         "control_any": ["dismiss_reward"],
@@ -597,6 +621,7 @@
       "tower_result": {"control": "dismiss_result", "targets": ["tower_ready"]},
       "tower_post_battle": {"control": "tower_exit", "targets": ["tower_ready", "trial"]},
       "tower_failure": {"control": "dismiss_tower_failure", "targets": ["tower_ready", "trial"]},
+      "ladder_reward_panel": {"control": "close_reward_panel", "targets": ["main", "hunter_league", "trial", "tasks", "rank_overview", "rank_tasks"]},
       "reward": {"control": "dismiss_reward", "targets": ["tower_post_battle", "resource_dialog", "resource_hub", "hunter_field", "hunter_quick_ready", "tasks", "main"]},
       "trial": {"control": "home", "targets": ["main"]},
       "dismissible_overlay": {"control": "dismiss_overlay", "targets": ["main", "tasks", "tower_ready", "trial"]},
@@ -625,13 +650,14 @@
       "resource_hub": ["home", "resource_magic"],
       "resource_dialog": ["home", "close_resource", "resource_quick"],
       "resource_confirm": ["resource_confirm"],
+      "ladder_reward_panel": ["close_reward_panel"],
       "reward": ["dismiss_reward"],
       "rank_overview": ["home", "rank_tasks_tab"],
       "rank_tasks": ["home", "league_go"]
     }
   },
   "page_search_margin": [20, 14],
-  "page_search_margins": {"tasks": [70, 14]},
+  "page_search_margins": {"tasks": [70, 14], "infinite_mystery": [70, 14]},
   "page_match_threshold": 0.78,
   "page_multi_anchor_threshold": 0.64,
   "page_multi_anchor_thresholds": {"main": 0.7, "hunter_confirm": 0.75},
@@ -642,7 +668,8 @@
     "resource_confirm": ["hunter_confirm"]
   },
   "state_occlusion_overrides": {
-    "resource_confirm": ["hunter_confirm"]
+    "resource_confirm": ["hunter_confirm"],
+    "ladder_reward_panel": ["reward", "main", "trial", "hunter_league", "rank_overview", "rank_tasks"]
   },
   "page_thresholds": {
     "main": 0.7,
@@ -742,7 +769,8 @@
     "supply": ["references\\supply_partial_wide_raw.png"],
     "tower": ["references\\tower_quick_wide_raw.png"],
     "abyss_cards": ["references\\abyss_cards_round2_raw.png"],
-    "abyss_exhausted": ["references\\abyss_exhausted_forest_raw.png"]
+    "abyss_exhausted": ["references\\abyss_exhausted_forest_raw.png"],
+    "infinite_mystery": ["tests\\fixtures\\recognition\\milestone5a-infinite-mystery-wide.webp"]
   },
   "anchors": {
     "main": [805, 87, 865, 132],

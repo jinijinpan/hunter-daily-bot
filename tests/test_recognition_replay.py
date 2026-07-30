@@ -88,7 +88,7 @@ class RealScreenshotReplayTests(unittest.TestCase):
 
     def test_manifest_is_small_and_contains_runs_and_recordings(self):
         samples = self.manifest["samples"]
-        self.assertLessEqual(len(samples), 29)
+        self.assertLessEqual(len(samples), 31)
         sources = [sample["source"] for sample in samples]
         self.assertTrue(any(source.startswith("runs/") for source in sources))
         self.assertTrue(any(source.startswith("recordings/") for source in sources))
@@ -147,6 +147,22 @@ class RealScreenshotReplayTests(unittest.TestCase):
         ]
         self.assertEqual(1, len(dismiss))
         self.assertEqual("ocr", dismiss[0].source)
+
+    def test_ladder_reward_panel_detects_only_its_close_control(self):
+        sample = next(
+            item for item in self.manifest["samples"]
+            if item["file"] == "milestone5a-ladder-reward-panel.png"
+        )
+        result = replay_sample(
+            sample, FIXTURE_DIR, self.config, self.matcher, self.engine
+        )
+
+        self.assertEqual("unknown", result["legacy_page"])
+        self.assertEqual("ladder_reward_panel", result["state"])
+        self.assertEqual(["close_reward_panel"], result["controls"])
+        x1, y1, x2, y2 = result["control_rects"]["close_reward_panel"]
+        self.assertLessEqual(abs(((x1 + x2) // 2) - 941), 3)
+        self.assertLessEqual(abs(((y1 + y2) // 2) - 154), 3)
 
     def test_milestone4r_resource_button_uses_ocr_and_outline_rectangle(self):
         sample = next(
@@ -231,6 +247,20 @@ class RealScreenshotReplayTests(unittest.TestCase):
         self.assertIn("dismiss_rank_overlay_title", result["controls"])
         self.assertNotIn("dismiss_rank_overlay", result["controls"])
 
+    def test_real_rank_drop_detects_title_control_behind_template_gate(self):
+        sample = next(
+            item for item in self.manifest["samples"]
+            if item["file"] == "milestone5a-rank-drop.webp"
+        )
+        result = replay_sample(
+            sample, FIXTURE_DIR, self.config, self.matcher, self.engine
+        )
+
+        self.assertEqual("infinite_rank_drop", result["legacy_page"])
+        self.assertEqual("rank_overlay", result["state"])
+        self.assertIn("dismiss_rank_overlay_title", result["controls"])
+        self.assertNotIn("dismiss_rank_overlay", result["controls"])
+
     def test_rank_tasks_reads_authoritative_hunter_league_progress(self):
         sample = next(
             item for item in self.manifest["samples"]
@@ -255,6 +285,7 @@ class RealScreenshotReplayTests(unittest.TestCase):
 
         self.assertEqual("rank_overview", result["state"])
         self.assertIn("rank_tasks_tab", result["controls"])
+        self.assertIn("template", result["control_sources"]["rank_tasks_tab"])
         self.assertIn("home", result["controls"])
 
     def test_resource_confirmation_and_tower_exit_are_detected_controls(self):

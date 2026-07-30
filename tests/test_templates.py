@@ -109,7 +109,10 @@ class TemplateRecognitionTests(unittest.TestCase):
             path.resolve() for _expected, path, _normalize in self.recognition_samples()
         }
         available = {path.resolve() for path in (ROOT / "references").glob("*.png")}
-        self.assertSetEqual(available, registered)
+        registered_references = {
+            path for path in registered if path.parent == (ROOT / "references").resolve()
+        }
+        self.assertSetEqual(available, registered_references)
 
     def test_generated_page_anchors_match_their_reference_crops(self):
         for page, source in self.config["reference_screenshots"].items():

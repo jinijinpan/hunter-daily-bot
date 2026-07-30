@@ -67,6 +67,7 @@ class WindowFocusTests(unittest.TestCase):
     def test_title_bar_click_is_verified_when_win32_activation_is_rejected(self):
         class Gui:
             foreground = 0
+            positions = []
 
             @staticmethod
             def ShowWindow(_handle, _mode):
@@ -80,6 +81,12 @@ class WindowFocusTests(unittest.TestCase):
             def SetForegroundWindow(_handle):
                 raise RuntimeError("foreground lock")
 
+            @classmethod
+            def SetWindowPos(cls, handle, insert_after, x, y, width, height, flags):
+                cls.positions.append(
+                    (handle, insert_after, x, y, width, height, flags)
+                )
+
         class Mouse:
             clicks = []
 
@@ -92,7 +99,14 @@ class WindowFocusTests(unittest.TestCase):
         game.execute = True
         game.window_handle = 123
         game.win32gui = Gui
-        game.win32con = SimpleNamespace(SW_RESTORE=9)
+        game.win32con = SimpleNamespace(
+            SW_RESTORE=9,
+            HWND_TOPMOST=-1,
+            HWND_NOTOPMOST=-2,
+            SWP_NOMOVE=2,
+            SWP_NOSIZE=1,
+            SWP_NOACTIVATE=16,
+        )
         game.pyautogui = Mouse
         game.content_top = 53
         game._window_rect = lambda: Rect(100, 200, 1554, 1109)
@@ -102,6 +116,13 @@ class WindowFocusTests(unittest.TestCase):
 
         self.assertEqual([(827, 225)], Mouse.clicks)
         self.assertEqual(123, Gui.foreground)
+        self.assertEqual(
+            [
+                (123, -1, 0, 0, 0, 0, 19),
+                (123, -2, 0, 0, 0, 0, 19),
+            ],
+            Gui.positions,
+        )
 
 
 if __name__ == "__main__":

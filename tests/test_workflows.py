@@ -2191,8 +2191,10 @@ class CapturedWorkflowTests(unittest.TestCase):
         self.assertEqual(["character_switch", "main"], game.waits)
 
     def test_character_cycle_runs_three_roles_and_switches_twice(self):
+        config = copy.deepcopy(self.config)
+        config["character_cycle_count"] = 3
         game = FakeGame()
-        bot = DailyBot(game, self.config)
+        bot = DailyBot(game, config)
         events = []
         bot._run_captured_tasks = lambda: events.append("tasks")
         bot._open_daily_tasks = lambda: events.append("open")

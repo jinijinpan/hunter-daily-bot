@@ -65,16 +65,17 @@
 
 ## 离线验证
 
-按要求顺序执行，完整测试只运行一次：
+2026-07-31 按要求顺序复核，完整测试只运行一次：
 
 | 验证 | 结果 | 框架耗时 | 墙钟耗时 |
 | --- | --- | --- | --- |
-| `python run_tests.py --profile fast` | `132 passed` | `4.179s` | `4.572s` |
-| `python run_tests.py --profile full` | `147 passed` | `174.863s` | `175.292s` |
-| `python replay_recognition.py` | `31/31 passed` | - | `168.654s` |
+| `python run_tests.py --profile fast` | `140 passed` | `4.639s` | `5.8s` |
+| `python run_tests.py --profile full` | `156 passed` | `218.222s` | `219.4s` |
+| `python replay_recognition.py` | `31/31 samples, exit 0` | - | `211.5s` |
 
-后续修复完成后的最新快速回归为 `140 passed`（框架 `4.429s`，墙钟 `4.870s`）。
-完整测试未重复运行；新增宽布局无限秘境样本已通过其定向识别测试。
+首次 fast 复核发现三角色功能测试隐式依赖全局 `character_cycle_count=3`。当前验收配置
+固定为 `1` 后该用例失败；测试现已自行显式设置 `3`，既保留三角色功能覆盖，也不会重新
+开启三角色验收。修复后 fast 通过，随后执行了唯一一次 full 和一次完整回放。
 
 ## 后续验收
 
